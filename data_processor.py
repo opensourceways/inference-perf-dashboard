@@ -178,19 +178,20 @@ if __name__ == "__main__":
     current_date = datetime.now().date()
 
     # 转换为字符串（默认格式：YYYYMMDD）
-    current_date_str = current_date.strftime("%Y%m%d")
+    # current_date_str = current_date.strftime("%Y%m%d")
+    current_date_str = '20251022'
     test_configs = [
         {
             "model_name": "Qwen3-32B",
-            "csv_path": f"{ROOT_DIR}/{current_date_str}/commit_id/Qwen3-32B/metrics.csv",
-            "metrics_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/Qwen3-32B/stats.json",
+            "csv_path": f"{ROOT_DIR}/{current_date_str}/commit_id/Qwen3-32B/gsm8kdataset.csv",
+            "metrics_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/Qwen3-32B/gsm8kdataset.json",
             "pr_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/pr.json",
             "stage": "stable"
         },
         {
             "model_name": "DeepSeek-V3",
-            "csv_path": f"{ROOT_DIR}/{current_date_str}/commit_id/DeepSeek-V3/metrics.csv",
-            "metrics_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/DeepSeek-V3/stats.json",
+            "csv_path": f"{ROOT_DIR}/{current_date_str}/commit_id/DeepSeek-V3/gsm8kdataset.csv",
+            "metrics_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/DeepSeek-V3/gsm8kdataset.json",
             "pr_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/pr.json",
             "stage": "stable"
         }
