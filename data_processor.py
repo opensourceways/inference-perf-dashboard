@@ -182,41 +182,103 @@ def get_subdir_names(dir_path: str) -> List[str]:
 
     return subdir_names
 
-
-if __name__ == "__main__":
-    # 测试配置：替换为实际文件路径
+def get_date_dir():
     # 获取当前日期（datetime 对象）
     current_date = datetime.now().date()
 
     # 转换为字符串（默认格式：YYYYMMDD）
-    # current_date_str = current_date.strftime("%Y%m%d")
-    current_date_str = '20251022'
-
+    current_date_str = current_date.strftime("%Y%m%d")
     date_dir = os.path.join(ROOT_DIR, current_date_str)
 
+    return current_date_str, date_dir
+
+def get_commit_dir():
+    current_date_str, date_dir = get_date_dir()
     commit_dir = os.path.join(date_dir, "commit_id")
+    return commit_dir
 
-    subdir_names = get_subdir_names(commit_dir)
 
-    for model_name in subdir_names:
-        test_configs = [
+def generate_metrics_data() -> List[Dict[str, Dict]]:
+    """
+    核心逻辑：获取日期/Commit目录、遍历模型子目录、判断文件存在性、生成metrics数据
+    返回：所有有效模型的metrics数据列表（跳过文件不存在的模型）
+    """
+    # 获取动态路径参数
+    try:
+        current_date_str, date_dir = get_date_dir()  # 需返回 (当前日期字符串, 日期目录名)
+        commit_dir_full = get_commit_dir()  # 需返回 commit 目录的完整路径（如 ~/.cache/aisbench/20251022/commit_id）
+        model_names = get_subdir_names(commit_dir_full)  # 需返回 commit 目录下的模型子目录名列表（如 ["Qwen3-32B", ...]）
+    except Exception as e:
+        print(f"获取动态路径参数失败：{str(e)}")
+        return []
+
+    # 存储所有有效模型的metrics数据
+    all_valid_metrics = []
+
+    # 遍历每个模型，生成配置并判断文件存在性
+    for model_name in model_names:
+        # 构建当前模型的3个关键文件路径
+        csv_path = os.path.join(ROOT_DIR, current_date_str, "commit_id", model_name, "gsm8kdataset.csv")
+        metrics_json_path = os.path.join(ROOT_DIR, current_date_str, "commit_id", model_name, "gsm8kdataset.json")
+        pr_json_path = os.path.join(ROOT_DIR, current_date_str, "commit_id", "pr.json")
+
+        # 判断文件是否存在（3个文件需同时存在，否则跳过）
+        missing_files = []
+        if not os.path.exists(csv_path):
+            missing_files.append(f"CSV文件: {csv_path}")
+        if not os.path.exists(metrics_json_path):
+            missing_files.append(f"指标JSON文件: {metrics_json_path}")
+        if not os.path.exists(pr_json_path):
+            missing_files.append(f"PR JSON文件: {pr_json_path}")
+
+        if missing_files:
+            print(f"模型 {model_name} 跳过：缺少以下文件 → {', '.join(missing_files)}")
+            continue  # 文件不全，跳过当前模型
+
+        # 构建当前模型的配置（文件存在时才处理）
+        model_config = [
             {
-                "model_name": f"{model_name}",
-                "csv_path": f"{ROOT_DIR}/{current_date_str}/commit_id/{model_name}/gsm8kdataset.csv",
-                "metrics_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/{model_name}/gsm8kdataset.json",
-                "pr_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/pr.json",
+                "model_name": model_name,
+                "csv_path": csv_path,
+                "metrics_json_path": metrics_json_path,
+                "pr_json_path": pr_json_path,
                 "stage": "stable"
             }
         ]
 
-        # 批量生成目标格式数据
-        final_metrics_data = batch_create_metrics_data(test_configs)
+        # 生成当前模型的metrics数据
+        try:
+            model_metrics = batch_create_metrics_data(model_config)  # 调用原有批量处理函数
+            if model_metrics:  # 确保生成数据非空
+                all_valid_metrics.extend(model_metrics)
+                print(f"模型 {model_name} 数据生成成功")
+        except Exception as e:
+            print(f"模型 {model_name} 数据生成失败：{str(e)}")
+            continue
 
-        # 打印结果
-        print("最终metrics_data格式：")
-        print(json.dumps(final_metrics_data, indent=2, ensure_ascii=False))
+    # 保存所有有效数据到JSON文件（若有有效数据）
+    if all_valid_metrics:
+        output_file = os.path.join(current_date_str, "commit_id", "metrics_data.json")
+        try:
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(all_valid_metrics, f, indent=2, ensure_ascii=False)
+            print(f"\n所有有效模型数据已保存到：{os.path.abspath(output_file)}")
+        except Exception as e:
+            print(f"保存数据到文件失败：{str(e)}")
 
-        # 保存到JSON文件
-        with open("metrics_data.json", "w", encoding="utf-8") as f:
-            json.dump(final_metrics_data, f, indent=2, ensure_ascii=False)
+    return all_valid_metrics
+
+
+# ---------------------- 函数调用（主入口） ----------------------
+if __name__ == "__main__":
+    print("开始生成metrics数据...")
+    final_data = generate_metrics_data()
+
+    # 打印最终结果摘要
+    if final_data:
+        print(f"\n生成完成！共处理 {len(final_data)} 个有效模型")
+        print("最终数据示例（第一个模型）：")
+        print(json.dumps(final_data[0], indent=2, ensure_ascii=False))
+    else:
+        print("\n生成完成，但未获取到任何有效模型数据")
 
