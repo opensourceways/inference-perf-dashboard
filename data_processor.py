@@ -1,10 +1,13 @@
 import pandas as pd
 import json
+import os
 from datetime import datetime
 from typing import Dict, Any, List, Tuple
 from dataclasses import asdict
 from data_models import Metric, PRInfo, create_metric_from_test_data
 
+
+ROOT_DIR = os.path.expanduser("~/.cache/aisbench")
 
 def parse_csv_metrics(csv_path: str, stage: str = "stable") -> Dict[str, float]:
     """解析性能指标CSV文件，提取指定阶段（如stable）的指标"""
@@ -104,7 +107,7 @@ def merge_metrics(csv_metrics: Dict[str, float], json_metrics: Dict[str, Any]) -
     return {**csv_metrics, **json_metrics}
 
 
-def create_test_data(
+def create_metrics_data(
         csv_path: str,
         metrics_json_path: str,
         pr_json_path: str,
@@ -112,7 +115,7 @@ def create_test_data(
         stage: str = "stable"
 ) -> Dict[str, Dict]:
     """
-    从文件生成test_data结构
+    从文件生成metrics_data结构
     参数:
         csv_path: 性能指标CSV路径
         metrics_json_path: 统计信息JSON路径
@@ -120,94 +123,88 @@ def create_test_data(
         model_name: 模型名称（如"Qwen3-32B"）
         stage: 阶段（如"stable"）
     返回:
-        按commit_id组织的test_data字典
+        按commit_id组织的metrics_data字典
     """
-    # 解析PR信息和commit_id
-    pr_info, commit_id = parse_pr_json(pr_json_path)
+    # 解析基础数据
+    pr_info, commit_id = parse_pr_json(pr_json_path)  # PR信息 + commit_id
+    csv_metrics = parse_csv_metrics(csv_path, stage)  # CSV指标
+    json_metrics = parse_metrics_json(metrics_json_path, stage)  # JSON指标
 
-    # 解析并合并性能指标
-    csv_metrics = parse_csv_metrics(csv_path, stage)
-    json_metrics = parse_metrics_json(metrics_json_path, stage)
-    full_metrics = merge_metrics(csv_metrics, json_metrics)
+    # 生成复合ID：格式 "commit_id_model_name"（确保唯一标识）
+    composite_id = f"{commit_id}_{model_name}"
 
-    # 创建Metric对象
-    metric = create_metric_from_test_data(full_metrics)
+    # 整合source内容：PR信息（字典格式） + 合并后的指标（字典格式）
+    pr_info_dict = asdict(pr_info)  # 将PRInfo对象转为字典
+    full_metrics_dict = merge_metrics(csv_metrics, json_metrics)  # 合并指标
+    source = {**pr_info_dict, **full_metrics_dict}  # 合并PR信息和指标
 
-    # 构建test_data
+    # 返回目标格式
     return {
-        commit_id: {
-            "pr_info": pr_info,
-            "metric_info": {model_name: metric}
-        }
+        "ID": composite_id,
+        "source": source
     }
 
 
-def batch_create_test_data(model_configs: List[Dict[str, str]]) -> Dict[str, Dict]:
+def batch_create_metrics_data(model_configs: List[Dict[str, str]]) -> List[Dict[str, Dict]]:
     """
-    批量处理多个模型，生成合并后的test_data
-    参数:
+    批量生成目标格式数据：返回列表，每个元素是单模型的 {"ID": ..., "source": ...}
+        参数:
         model_configs: 模型配置列表，每个配置包含csv_path、metrics_json_path、pr_json_path、model_name
     返回:
-        合并后的test_data（按commit_id分组）
+        合并后的metrics_data
     """
-    test_data = {}
+    metrics_data_list = []
     for config in model_configs:
         try:
-            # 生成单个模型的test_data
-            model_data = create_test_data(
+            # 生成单模型目标格式数据
+            single_model_data = create_metrics_data(
                 csv_path=config["csv_path"],
                 metrics_json_path=config["metrics_json_path"],
                 pr_json_path=config["pr_json_path"],
                 model_name=config["model_name"],
                 stage=config.get("stage", "stable")
             )
+            metrics_data_list.append(single_model_data)
         except Exception as e:
             print(f"处理模型 {config['model_name']} 失败: {str(e)}")
             continue
 
-        # 合并到总test_data（同一commit_id下的模型合并）
-        commit_id = next(iter(model_data.keys()))
-        if commit_id not in test_data:
-            test_data[commit_id] = model_data[commit_id]
-        else:
-            test_data[commit_id]["metric_info"].update(model_data[commit_id]["metric_info"])
-
-    return test_data
+    return metrics_data_list
 
 
 if __name__ == "__main__":
-    # 示例：批量处理模型配置
-    sample_configs = [
+    # 测试配置：替换为实际文件路径
+    # 获取当前日期（datetime 对象）
+    current_date = datetime.now().date()
+
+    # 转换为字符串（默认格式：YYYYMMDD）
+    current_date_str = current_date.strftime("%Y%m%d")
+    test_configs = [
         {
             "model_name": "Qwen3-32B",
-            "csv_path": "qwen3_32b_metrics.csv",  # 替换为实际路径
-            "metrics_json_path": "qwen3_32b_stats.json",  # 替换为实际路径
-            "pr_json_path": "qwen3_32b_pr.json",  # 替换为实际路径
+            "csv_path": f"{ROOT_DIR}/{current_date_str}/commit_id/Qwen3-32B/metrics.csv",
+            "metrics_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/Qwen3-32B/stats.json",
+            "pr_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/pr.json",
             "stage": "stable"
         },
         {
             "model_name": "DeepSeek-V3",
-            "csv_path": "deepseek_v3_metrics.csv",
-            "metrics_json_path": "deepseek_v3_stats.json",
-            "pr_json_path": "deepseek_v3_pr.json",
+            "csv_path": f"{ROOT_DIR}/{current_date_str}/commit_id/DeepSeek-V3/metrics.csv",
+            "metrics_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/DeepSeek-V3/stats.json",
+            "pr_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/pr.json",
             "stage": "stable"
         }
     ]
 
-    # 生成test_data
-    test_data = batch_create_test_data(sample_configs)
+    # 批量生成目标格式数据
+    final_metrics_data = batch_create_metrics_data(test_configs)
 
-    # 转换为字典格式（便于序列化/存储）
-    test_data_dict = {
-        cid: {
-            "pr_info": asdict(data["pr_info"]),
-            "metric_info": {m: asdict(met) for m, met in data["metric_info"].items()}
-        }
-        for cid, data in test_data.items()
-    }
+    # 打印结果（或写入文件）
+    import json
+    print("最终metrics_data格式：")
+    print(json.dumps(final_metrics_data, indent=2, ensure_ascii=False))
 
-    # 打印结果（实际场景可写入文件或数据库）
-    import pprint
+    # 可选：保存到JSON文件
+    with open("metrics_data.json", "w", encoding="utf-8") as f:
+        json.dump(final_metrics_data, f, indent=2, ensure_ascii=False)
 
-    print("生成的test_data:")
-    pprint.pprint(test_data_dict)
