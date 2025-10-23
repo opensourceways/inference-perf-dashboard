@@ -276,28 +276,71 @@ def generate_metrics_data() -> List[Dict[str, Dict]]:
             print(f"模型 {model_name} 数据生成失败：{str(e)}")
             continue
 
-        # 定义输出文件名：格式为“20251022_commit_id_Qwen3-32B.json”
-        output_filename = f"{current_date_str}_commit_id_{model_name}.json"
-        # 输出路径：默认保存在当前运行目录（可改为ROOT_DIR，只需调整os.path.join的参数）
-        output_file = os.path.join("output", output_filename)
+        # 定义输出目录和文件名（确保目录存在，避免写入失败）
+        output_root_dir = "output"
+        os.makedirs(output_root_dir, exist_ok=True)
 
-        # 去重逻辑：判断文件是否存在 + 检查ID是否已存在
-        id_exists = False
+        # 生成文件名：格式“20251022_commit_id_Qwen3-32B.json”（commit_id 用实际目录名，如需真实哈希可调整）
+        output_filename = f"{current_date_str}_commit_id_{model_name}.json"
+        output_file = os.path.join(output_root_dir, output_filename)
+
+        # 去重逻辑：分步骤判断文件存在性 + ID一致性，细化异常处理
+        id_exists = False  # 标记ID是否已存在
         if os.path.exists(output_file):
+            print(f"检测到模型 {model_name} 已有文件：{output_filename}，开始校验ID...")
             try:
-                # 读取已有文件，检查ID是否匹配
+                # 读取已有文件（限制读取大小，避免超大文件占用资源）
                 with open(output_file, "r", encoding="utf-8") as f:
+                    # 读取文件内容（若文件过大，可拆分为按行读取，此处简化用json.load）
                     existing_data = json.load(f)
-                # 若文件是列表格式（如[{"ID": "...", ...}]），取第一个元素的ID；若为字典，直接取ID
-                existing_id = existing_data[0]["ID"] if isinstance(existing_data, list) else existing_data["ID"]
+
+                # 提取已有数据的ID
+                existing_id = None
+                if isinstance(existing_data, list):
+                    # 格式1：列表（如 [{"ID": "...", ...}]）→ 取第一个有效元素的ID
+                    if not existing_data:  # 空列表，无有效ID
+                        print(f"模型 {model_name} 已有文件为空列表，无有效ID")
+                    else:
+                        first_item = existing_data[0]
+                        if "ID" not in first_item:
+                            raise KeyError("文件列表中的数据缺少必填字段 'ID'")
+                        existing_id = first_item["ID"]
+                elif isinstance(existing_data, dict):
+                    # 格式2：字典（如 {"ID": "...", "source": ...}）→ 直接取ID
+                    if "ID" not in existing_data:
+                        raise KeyError("文件字典数据缺少必填字段 'ID'")
+                    existing_id = existing_data["ID"]
+                else:
+                    # 不支持的格式（如字符串、数字）
+                    raise TypeError(f"文件数据格式不支持（仅支持列表/字典），实际格式：{type(existing_data).__name__}")
+
+                # 对比当前数据ID与已有ID（校验当前数据是否有ID字段）
+                if "ID" not in current_data:
+                    raise KeyError(f"当前模型 {model_name} 生成的数据缺少必填字段 'ID'")
                 current_id = current_data["ID"]
+
+                # 判断ID是否重复
                 if existing_id == current_id:
                     id_exists = True
-                    print(f"模型 {model_name} 跳过：文件 {output_filename} 已包含相同ID（{current_id}）")
-            except Exception as e:
-                print(f"检查模型 {model_name} 已有文件失败：{str(e)}，将覆盖文件")
+                    print(f"模型 {model_name} 跳过：文件已包含相同ID（{current_id}），无需重复写入")
+                else:
+                    print(f"模型 {model_name} 已有文件ID（{existing_id}）与当前ID（{current_id}）不一致，将覆盖文件")
 
-        # 6. 无重复ID时，写入文件
+            # 异常处理
+            except json.JSONDecodeError:
+                print(f"模型 {model_name} 已有文件格式错误（非标准JSON），将覆盖文件")
+            except KeyError as e:
+                print(f"模型 {model_name} 已有文件数据异常：{str(e)}，将覆盖文件")
+            except TypeError as e:
+                print(f"模型 {model_name} 已有文件数据格式异常：{str(e)}，将覆盖文件")
+            except Exception as e:
+                # 其他未预见的错误（如权限不足、文件损坏）
+                print(f"检查模型 {model_name} 已有文件时发生未知错误：{str(e)}，将覆盖文件")
+        else:
+            # 文件不存在，无需校验ID
+            print(f"模型 {model_name} 无已有文件，准备写入新文件")
+
+        # 无重复ID时，写入文件
         if not id_exists:
             try:
                 # 写入当前模型的单独文件（无需合并，每个模型一个文件）
