@@ -217,151 +217,216 @@ def get_data_dir(date_str: str = None) -> tuple[str, str, str]:
     return current_date_str, date_dir, commit_dir
 
 
-def generate_metrics_data() -> List[Dict[str, Dict]]:
+# ---------------------- 子函数1：获取动态路径参数（单一职责：路径相关） ----------------------
+def get_dynamic_paths(target_date: str = None) -> Tuple[str, str, List[str]]:
     """
-    核心逻辑：获取日期/Commit目录、遍历模型子目录、判断文件存在性、生成metrics数据
-    返回：所有有效模型的metrics数据列表（跳过文件不存在的模型）
+    获取日期字符串、commit目录路径、模型名称列表
+    参数:
+        target_date: 目标日期（格式YYYYMMDD，如"20251022"）
+    返回:
+        (current_date_str, commit_dir_full, model_names)
     """
-    # 获取动态路径参数
     try:
-        current_date_str, date_dir, commit_dir_full = get_data_dir('20251022')  # 需返回 (当前日期字符串, 日期目录名)
-        model_names = get_subdir_names(commit_dir_full)  # 需返回 commit 目录下的模型子目录名列表（如 ["Qwen3-32B", ...]）
+        # 调用已定义的get_data_dir，获取日期和目录
+        current_date_str, date_dir, commit_dir_full = get_data_dir(target_date)
+        # 获取commit目录下的模型子目录名
+        model_names = get_subdir_names(commit_dir_full)
+        if not model_names:
+            print(f"警告：commit目录 {commit_dir_full} 下无模型子目录")
+        return current_date_str, commit_dir_full, model_names
     except Exception as e:
-        print(f"获取动态路径参数失败：{str(e)}")
-        return []
+        raise Exception(f"获取动态路径失败：{str(e)}")
 
-    # 存储所有有效模型的metrics数据
-    all_valid_metrics = []
 
-    # 遍历每个模型，生成配置并判断文件存在性
-    for model_name in model_names:
-        # 构建当前模型的3个关键文件路径
-        csv_path = os.path.join(ROOT_DIR, current_date_str, "commit_id", model_name, "gsm8kdataset.csv")
-        metrics_json_path = os.path.join(ROOT_DIR, current_date_str, "commit_id", model_name, "gsm8kdataset.json")
-        pr_json_path = os.path.join(ROOT_DIR, current_date_str, "commit_id", "pr.json")
+# ---------------------- 子函数2：校验模型所需文件是否齐全（单一职责：文件校验） ----------------------
+def check_model_files(current_date_str: str, model_name: str) -> Tuple[bool, List[str], Dict[str, str]]:
+    """
+    校验当前模型的CSV、指标JSON、PR JSON文件是否存在
+    参数:
+        current_date_str: 日期字符串（YYYYMMDD）
+        model_name: 模型名称
+    返回:
+        (is_valid, missing_files, file_paths)
+        - is_valid: 是否所有文件齐全
+        - missing_files: 缺失的文件列表
+        - file_paths: 所有文件的完整路径（文件齐全时有效）
+    """
+    # 构建3个关键文件的路径
+    file_paths = {
+        "csv_path": os.path.join(ROOT_DIR, current_date_str, "commit_id", model_name, "gsm8kdataset.csv"),
+        "metrics_json_path": os.path.join(ROOT_DIR, current_date_str, "commit_id", model_name, "gsm8kdataset.json"),
+        "pr_json_path": os.path.join(ROOT_DIR, current_date_str, "commit_id", "pr.json")
+    }
 
-        # 判断文件是否存在（3个文件需同时存在，否则跳过）
-        missing_files = []
-        if not os.path.exists(csv_path):
-            missing_files.append(f"CSV文件: {csv_path}")
-        if not os.path.exists(metrics_json_path):
-            missing_files.append(f"指标JSON文件: {metrics_json_path}")
-        if not os.path.exists(pr_json_path):
-            missing_files.append(f"PR JSON文件: {pr_json_path}")
+    # 检查文件存在性
+    missing_files = []
+    for file_type, file_path in file_paths.items():
+        if not os.path.exists(file_path):
+            missing_files.append(f"{file_type.replace('_path', '')}：{file_path}")
 
-        if missing_files:
-            print(f"模型 {model_name} 跳过：缺少以下文件 → {', '.join(missing_files)}")
-            continue  # 文件不全，跳过当前模型
+    return len(missing_files) == 0, missing_files, file_paths
 
-        # 构建当前模型的配置（文件存在时才处理）
+
+# ---------------------- 子函数3：生成单个模型的metrics数据（单一职责：数据生成） ----------------------
+def generate_single_model_data(model_name: str, file_paths: Dict[str, str]) -> Dict[str, Any]:
+    """
+    根据文件路径生成当前模型的metrics数据
+    参数:
+        model_name: 模型名称
+        file_paths: 文件路径字典（csv_path、metrics_json_path、pr_json_path）
+    返回:
+        单个模型的metrics数据（含ID和source）
+    """
+    try:
+        # 构建模型配置
         model_config = [
             {
                 "model_name": model_name,
-                "csv_path": csv_path,
-                "metrics_json_path": metrics_json_path,
-                "pr_json_path": pr_json_path,
+                "csv_path": file_paths["csv_path"],
+                "metrics_json_path": file_paths["metrics_json_path"],
+                "pr_json_path": file_paths["pr_json_path"],
                 "stage": "stable"
             }
         ]
+        # 生成数据
+        model_metrics = batch_create_metrics_data(model_config)
+        if not model_metrics:
+            raise Exception("无有效数据生成")
+        return model_metrics[0]  # 单个模型仅1条数据
+    except Exception as e:
+        raise Exception(f"数据生成失败：{str(e)}")
 
-        # 生成当前模型的metrics数据
+
+# ---------------------- 子函数4：处理文件写入与去重（单一职责：文件写入+去重） ----------------------
+def write_model_data_to_file(current_date_str: str, model_name: str, current_data: Dict[str, Any]) -> None:
+    """
+    处理模型数据的写入，含去重逻辑（ID存在则跳过，否则写入）
+    参数:
+        current_date_str: 日期字符串（YYYYMMDD）
+        model_name: 模型名称
+        current_data: 单个模型的metrics数据
+    """
+    # 1. 准备输出路径和文件名
+    output_root_dir = "output"
+    os.makedirs(output_root_dir, exist_ok=True)  # 确保目录存在
+    output_filename = f"{current_date_str}_commit_id_{model_name}.json"
+    output_file = os.path.join(output_root_dir, output_filename)
+
+    # 2. 去重判断
+    id_exists = False
+    if os.path.exists(output_file):
+        print(f"检测到模型 {model_name} 已有文件：{output_filename}，校验ID...")
+        id_exists = _check_existing_id(output_file, current_data)  # 内部辅助函数
+
+    # 3. 写入文件（无重复ID时）
+    if not id_exists:
         try:
-            model_metrics = batch_create_metrics_data(model_config)
-            if not model_metrics:
-                print(f"模型 {model_name} 无有效数据，跳过")
-                continue
-            current_data = model_metrics[0]  # 单个模型仅1条数据
-            all_valid_metrics.append(current_data)
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump([current_data], f, indent=2, ensure_ascii=False)
+            print(f"模型 {model_name} 数据已保存：{os.path.abspath(output_file)}")
         except Exception as e:
-            print(f"模型 {model_name} 数据生成失败：{str(e)}")
+            print(f"保存模型 {model_name} 数据失败：{str(e)}")
+    else:
+        print(f"模型 {model_name} 跳过：已有相同ID数据")
+
+
+# ---------------------- 子函数4的辅助函数：校验已有文件的ID（内部使用，不对外暴露） ----------------------
+def _check_existing_id(output_file: str, current_data: Dict[str, Any]) -> bool:
+    """内部辅助：检查已有文件的ID是否与当前数据ID重复"""
+    try:
+        # 读取已有文件
+        with open(output_file, "r", encoding="utf-8") as f:
+            existing_data = json.load(f)
+
+        # 提取已有ID
+        existing_id = _extract_id_from_data(existing_data, "已有文件")
+        # 提取当前数据ID
+        current_id = _extract_id_from_data(current_data, "当前数据")
+
+        # 对比ID
+        if existing_id == current_id:
+            return True
+        else:
+            print(f"模型ID不匹配（已有：{existing_id}，当前：{current_id}），将覆盖文件")
+            return False
+
+    except json.JSONDecodeError:
+        print(f"已有文件格式错误（非标准JSON），将覆盖文件")
+        return False
+    except Exception as e:
+        print(f"⚠校验ID时出错：{str(e)}，将覆盖文件")
+        return False
+
+
+# ---------------------- 子函数4的辅助函数：提取数据中的ID（内部使用，不对外暴露） ----------------------
+def _extract_id_from_data(data: Any, data_type: str) -> str:
+    """内部辅助：从数据（列表/字典）中提取ID，无ID则抛异常"""
+    if isinstance(data, list):
+        if not data:
+            raise Exception(f"{data_type}为空列表，无有效ID")
+        first_item = data[0]
+        if "ID" not in first_item:
+            raise Exception(f"{data_type}列表中的数据缺少'ID'字段")
+        return first_item["ID"]
+    elif isinstance(data, dict):
+        if "ID" not in data:
+            raise Exception(f"{data_type}字典缺少'ID'字段")
+        return data["ID"]
+    else:
+        raise Exception(f"{data_type}格式不支持（仅列表/字典），实际：{type(data).__name__}")
+
+
+# ---------------------- 主函数：整合所有子函数，串联流程（单一职责：流程控制） ----------------------
+def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Dict]]:
+    """
+    主函数：生成所有有效模型的metrics数据并写入文件
+    参数:
+        target_date: 目标日期（格式YYYYMMDD，默认"20251022"）
+    返回:
+        所有有效模型的metrics数据列表
+    """
+    all_valid_metrics = []
+    print(f"=== 开始生成metrics数据（目标日期：{target_date}）===")
+
+    # 1. 获取动态路径（调用子函数1）
+    try:
+        current_date_str, commit_dir_full, model_names = get_dynamic_paths(target_date)
+    except Exception as e:
+        print(f"初始化失败：{str(e)}")
+        return all_valid_metrics
+
+    # 2. 遍历每个模型处理
+    if not model_names:
+        print("无模型可处理，流程结束")
+        return all_valid_metrics
+
+    for model_name in model_names:
+        print(f"\n--- 处理模型：{model_name} ---")
+
+        # 3. 校验模型文件（调用子函数2）
+        is_file_valid, missing_files, file_paths = check_model_files(current_date_str, model_name)
+        if not is_file_valid:
+            print(f"模型 {model_name} 跳过：缺少文件 → {', '.join(missing_files)}")
             continue
 
-        # 定义输出目录和文件名（确保目录存在，避免写入失败）
-        output_root_dir = "output"
-        os.makedirs(output_root_dir, exist_ok=True)
+        # 4. 生成模型数据（调用子函数3）
+        try:
+            current_data = generate_single_model_data(model_name, file_paths)
+            all_valid_metrics.append(current_data)
+            print(f"模型 {model_name} 数据生成成功")
+        except Exception as e:
+            print(f"模型 {model_name} 跳过：{str(e)}")
+            continue
 
-        # 生成文件名：格式“20251022_commit_id_Qwen3-32B.json”（commit_id 用实际目录名，如需真实哈希可调整）
-        output_filename = f"{current_date_str}_commit_id_{model_name}.json"
-        output_file = os.path.join(output_root_dir, output_filename)
+        # 5. 写入文件（调用子函数4）
+        write_model_data_to_file(current_date_str, model_name, current_data)
 
-        # 去重逻辑：分步骤判断文件存在性 + ID一致性，细化异常处理
-        id_exists = False  # 标记ID是否已存在
-        if os.path.exists(output_file):
-            print(f"检测到模型 {model_name} 已有文件：{output_filename}，开始校验ID...")
-            try:
-                # 读取已有文件（限制读取大小，避免超大文件占用资源）
-                with open(output_file, "r", encoding="utf-8") as f:
-                    # 读取文件内容（若文件过大，可拆分为按行读取，此处简化用json.load）
-                    existing_data = json.load(f)
-
-                # 提取已有数据的ID
-                existing_id = None
-                if isinstance(existing_data, list):
-                    # 格式1：列表（如 [{"ID": "...", ...}]）→ 取第一个有效元素的ID
-                    if not existing_data:  # 空列表，无有效ID
-                        print(f"模型 {model_name} 已有文件为空列表，无有效ID")
-                    else:
-                        first_item = existing_data[0]
-                        if "ID" not in first_item:
-                            raise KeyError("文件列表中的数据缺少必填字段 'ID'")
-                        existing_id = first_item["ID"]
-                elif isinstance(existing_data, dict):
-                    # 格式2：字典（如 {"ID": "...", "source": ...}）→ 直接取ID
-                    if "ID" not in existing_data:
-                        raise KeyError("文件字典数据缺少必填字段 'ID'")
-                    existing_id = existing_data["ID"]
-                else:
-                    # 不支持的格式（如字符串、数字）
-                    raise TypeError(f"文件数据格式不支持（仅支持列表/字典），实际格式：{type(existing_data).__name__}")
-
-                # 对比当前数据ID与已有ID（校验当前数据是否有ID字段）
-                if "ID" not in current_data:
-                    raise KeyError(f"当前模型 {model_name} 生成的数据缺少必填字段 'ID'")
-                current_id = current_data["ID"]
-
-                # 判断ID是否重复
-                if existing_id == current_id:
-                    id_exists = True
-                    print(f"模型 {model_name} 跳过：文件已包含相同ID（{current_id}），无需重复写入")
-                else:
-                    print(f"模型 {model_name} 已有文件ID（{existing_id}）与当前ID（{current_id}）不一致，将覆盖文件")
-
-            # 异常处理
-            except json.JSONDecodeError:
-                print(f"模型 {model_name} 已有文件格式错误（非标准JSON），将覆盖文件")
-            except KeyError as e:
-                print(f"模型 {model_name} 已有文件数据异常：{str(e)}，将覆盖文件")
-            except TypeError as e:
-                print(f"模型 {model_name} 已有文件数据格式异常：{str(e)}，将覆盖文件")
-            except Exception as e:
-                # 其他未预见的错误（如权限不足、文件损坏）
-                print(f"检查模型 {model_name} 已有文件时发生未知错误：{str(e)}，将覆盖文件")
-        else:
-            # 文件不存在，无需校验ID
-            print(f"模型 {model_name} 无已有文件，准备写入新文件")
-
-        # 无重复ID时，写入文件
-        if not id_exists:
-            try:
-                # 写入当前模型的单独文件（无需合并，每个模型一个文件）
-                with open(output_file, "w", encoding="utf-8") as f:
-                    json.dump([current_data], f, indent=2, ensure_ascii=False)  # 用列表包裹，保持格式统一
-                print(f"模型 {model_name} 数据已保存：{os.path.abspath(output_file)}")
-            except Exception as e:
-                print(f"保存模型 {model_name} 数据失败：{str(e)}")
-
+    # 流程结束
+    print(f"\n=== 处理完成！共生成 {len(all_valid_metrics)} 个模型的有效数据 ===")
     return all_valid_metrics
 
 
+# ---------------------- 函数调用（主入口） ----------------------
 if __name__ == "__main__":
-    print("开始生成metrics数据...")
-    final_data = generate_metrics_data()
-
-    # 打印最终结果摘要
-    if final_data:
-        print(f"\n生成完成！共处理 {len(final_data)} 个有效模型")
-        print("最终数据示例（第一个模型）：")
-        print(json.dumps(final_data[0], indent=2, ensure_ascii=False))
-    else:
-        print("\n生成完成，但未获取到任何有效模型数据")
-
+    # 可指定目标日期，如 generate_metrics_data("20251023")
+    generate_metrics_data(target_date="20251022")
