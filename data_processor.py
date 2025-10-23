@@ -279,7 +279,7 @@ def generate_metrics_data() -> List[Dict[str, Dict]]:
         # 定义输出文件名：格式为“20251022_commit_id_Qwen3-32B.json”
         output_filename = f"{current_date_str}_commit_id_{model_name}.json"
         # 输出路径：默认保存在当前运行目录（可改为ROOT_DIR，只需调整os.path.join的参数）
-        output_file = os.path.join(output_filename)  # 扁平化路径，无分层目录
+        output_file = os.path.join("output", output_filename)
 
         # 去重逻辑：判断文件是否存在 + 检查ID是否已存在
         id_exists = False
