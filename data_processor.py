@@ -266,23 +266,46 @@ def generate_metrics_data() -> List[Dict[str, Dict]]:
 
         # 生成当前模型的metrics数据
         try:
-            model_metrics = batch_create_metrics_data(model_config)  # 调用原有批量处理函数
-            if model_metrics:  # 确保生成数据非空
-                all_valid_metrics.extend(model_metrics)
-                print(f"模型 {model_name} 数据生成成功")
+            model_metrics = batch_create_metrics_data(model_config)
+            if not model_metrics:
+                print(f"模型 {model_name} 无有效数据，跳过")
+                continue
+            current_data = model_metrics[0]  # 单个模型仅1条数据
+            all_valid_metrics.append(current_data)
         except Exception as e:
             print(f"模型 {model_name} 数据生成失败：{str(e)}")
             continue
 
-    # 保存所有有效数据到JSON文件（若有有效数据）
-    if all_valid_metrics:
-        output_file = os.path.join(current_date_str, "commit_id", "metrics_data.json")
-        try:
-            with open(output_file, "w", encoding="utf-8") as f:
-                json.dump(all_valid_metrics, f, indent=2, ensure_ascii=False)
-            print(f"\n所有有效模型数据已保存到：{os.path.abspath(output_file)}")
-        except Exception as e:
-            print(f"保存数据到文件失败：{str(e)}")
+        # 定义输出文件名：格式为“20251022_commit_id_Qwen3-32B.json”
+        output_filename = f"{current_date_str}_commit_id_{model_name}.json"
+        # 输出路径：默认保存在当前运行目录（可改为ROOT_DIR，只需调整os.path.join的参数）
+        output_file = os.path.join(output_filename)  # 扁平化路径，无分层目录
+
+        # 去重逻辑：判断文件是否存在 + 检查ID是否已存在
+        id_exists = False
+        if os.path.exists(output_file):
+            try:
+                # 读取已有文件，检查ID是否匹配
+                with open(output_file, "r", encoding="utf-8") as f:
+                    existing_data = json.load(f)
+                # 若文件是列表格式（如[{"ID": "...", ...}]），取第一个元素的ID；若为字典，直接取ID
+                existing_id = existing_data[0]["ID"] if isinstance(existing_data, list) else existing_data["ID"]
+                current_id = current_data["ID"]
+                if existing_id == current_id:
+                    id_exists = True
+                    print(f"模型 {model_name} 跳过：文件 {output_filename} 已包含相同ID（{current_id}）")
+            except Exception as e:
+                print(f"检查模型 {model_name} 已有文件失败：{str(e)}，将覆盖文件")
+
+        # 6. 无重复ID时，写入文件
+        if not id_exists:
+            try:
+                # 写入当前模型的单独文件（无需合并，每个模型一个文件）
+                with open(output_file, "w", encoding="utf-8") as f:
+                    json.dump([current_data], f, indent=2, ensure_ascii=False)  # 用列表包裹，保持格式统一
+                print(f"模型 {model_name} 数据已保存：{os.path.abspath(output_file)}")
+            except Exception as e:
+                print(f"保存模型 {model_name} 数据失败：{str(e)}")
 
     return all_valid_metrics
 
