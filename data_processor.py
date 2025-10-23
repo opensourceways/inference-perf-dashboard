@@ -182,20 +182,39 @@ def get_subdir_names(dir_path: str) -> List[str]:
 
     return subdir_names
 
-def get_date_dir():
-    # 获取当前日期（datetime 对象）
-    current_date = datetime.now().date()
+def get_data_dir(date_str: str = None) -> tuple[str, str, str]:
+    """
+    根据传入的日期字符串生成数据目录路径，默认使用当前日期
 
-    # 转换为字符串（默认格式：YYYYMMDD）
-    current_date_str = current_date.strftime("%Y%m%d")
+    参数:
+        date_str: 可选，指定日期（格式：YYYYMMDD，如"20251022"）
+                  若为None，则自动使用当前日期
+
+    返回:
+        tuple: (current_date_str, date_dir, commit_dir)
+              - current_date_str: 日期字符串（YYYYMMDD）
+              - date_dir: 日期目录完整路径（ROOT_DIR/YYYYMMDD）
+              - commit_dir: commit子目录完整路径（ROOT_DIR/YYYYMMDD/commit_id）
+    """
+    # 1. 确定日期字符串：优先使用传入的date_str，否则用当前日期
+    if date_str:
+        # 校验传入的日期格式是否正确（YYYYMMDD）
+        try:
+            # 尝试解析为日期对象，验证格式有效性
+            datetime.strptime(date_str, "%Y%m%d")
+            current_date_str = date_str
+        except ValueError:
+            raise ValueError(f"传入的date_str格式错误，应为YYYYMMDD，实际为：{date_str}")
+    else:
+        # 无传入日期时，使用当前日期（YYYYMMDD）
+        current_date = datetime.now().date()
+        current_date_str = current_date.strftime("%Y%m%d")
+
+    # 2. 生成目录路径
     date_dir = os.path.join(ROOT_DIR, current_date_str)
-
-    return current_date_str, date_dir
-
-def get_commit_dir():
-    current_date_str, date_dir = get_date_dir()
     commit_dir = os.path.join(date_dir, "commit_id")
-    return commit_dir
+
+    return current_date_str, date_dir, commit_dir
 
 
 def generate_metrics_data() -> List[Dict[str, Dict]]:
@@ -205,8 +224,7 @@ def generate_metrics_data() -> List[Dict[str, Dict]]:
     """
     # 获取动态路径参数
     try:
-        current_date_str, date_dir = get_date_dir()  # 需返回 (当前日期字符串, 日期目录名)
-        commit_dir_full = get_commit_dir()  # 需返回 commit 目录的完整路径（如 ~/.cache/aisbench/20251022/commit_id）
+        current_date_str, date_dir, commit_dir_full = get_data_dir('20251022')  # 需返回 (当前日期字符串, 日期目录名)
         model_names = get_subdir_names(commit_dir_full)  # 需返回 commit 目录下的模型子目录名列表（如 ["Qwen3-32B", ...]）
     except Exception as e:
         print(f"获取动态路径参数失败：{str(e)}")
@@ -269,7 +287,6 @@ def generate_metrics_data() -> List[Dict[str, Dict]]:
     return all_valid_metrics
 
 
-# ---------------------- 函数调用（主入口） ----------------------
 if __name__ == "__main__":
     print("开始生成metrics数据...")
     final_data = generate_metrics_data()
