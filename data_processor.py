@@ -171,6 +171,17 @@ def batch_create_metrics_data(model_configs: List[Dict[str, str]]) -> List[Dict[
 
     return metrics_data_list
 
+def get_subdir_names(dir_path: str) -> List[str]:
+    """获取子目录名称"""
+    subdir_names = []
+
+    for entry in os.listdir(dir_path):
+        entry_path = os.path.join(dir_path, entry)
+        if os.path.isdir(entry_path):
+            subdir_names.append(entry)
+
+    return subdir_names
+
 
 if __name__ == "__main__":
     # 测试配置：替换为实际文件路径
@@ -180,32 +191,32 @@ if __name__ == "__main__":
     # 转换为字符串（默认格式：YYYYMMDD）
     # current_date_str = current_date.strftime("%Y%m%d")
     current_date_str = '20251022'
-    test_configs = [
-        {
-            "model_name": "Qwen3-32B",
-            "csv_path": f"{ROOT_DIR}/{current_date_str}/commit_id/Qwen3-32B/gsm8kdataset.csv",
-            "metrics_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/Qwen3-32B/gsm8kdataset.json",
-            "pr_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/pr.json",
-            "stage": "stable"
-        },
-        {
-            "model_name": "DeepSeek-V3",
-            "csv_path": f"{ROOT_DIR}/{current_date_str}/commit_id/DeepSeek-V3/gsm8kdataset.csv",
-            "metrics_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/DeepSeek-V3/gsm8kdataset.json",
-            "pr_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/pr.json",
-            "stage": "stable"
-        }
-    ]
 
-    # 批量生成目标格式数据
-    final_metrics_data = batch_create_metrics_data(test_configs)
+    date_dir = os.path.join(ROOT_DIR, current_date_str)
 
-    # 打印结果（或写入文件）
-    import json
-    print("最终metrics_data格式：")
-    print(json.dumps(final_metrics_data, indent=2, ensure_ascii=False))
+    commit_dir = os.path.join(date_dir, "commit_id")
 
-    # 可选：保存到JSON文件
-    with open("metrics_data.json", "w", encoding="utf-8") as f:
-        json.dump(final_metrics_data, f, indent=2, ensure_ascii=False)
+    subdir_names = get_subdir_names(commit_dir)
+
+    for model_name in subdir_names:
+        test_configs = [
+            {
+                "model_name": f"{model_name}",
+                "csv_path": f"{ROOT_DIR}/{current_date_str}/commit_id/{model_name}/gsm8kdataset.csv",
+                "metrics_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/{model_name}/gsm8kdataset.json",
+                "pr_json_path": f"{ROOT_DIR}/{current_date_str}/commit_id/pr.json",
+                "stage": "stable"
+            }
+        ]
+
+        # 批量生成目标格式数据
+        final_metrics_data = batch_create_metrics_data(test_configs)
+
+        # 打印结果
+        print("最终metrics_data格式：")
+        print(json.dumps(final_metrics_data, indent=2, ensure_ascii=False))
+
+        # 保存到JSON文件
+        with open("metrics_data.json", "w", encoding="utf-8") as f:
+            json.dump(final_metrics_data, f, indent=2, ensure_ascii=False)
 
