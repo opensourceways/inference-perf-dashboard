@@ -6,13 +6,12 @@ import os
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, DefaultDict
 from dataclasses import asdict
-from data_models import Metric, PRInfo, create_metric_from_test_data
-
+from data_models import Metric, PRInfo
 
 ROOT_DIR = os.path.expanduser("~/.cache/aisbench")
 
-def parse_csv_metrics(csv_path: str, stage: str = "stable") -> Dict[str, float]:
-    """解析性能指标CSV文件，提取指定阶段（如stable）的指标"""
+def parse_metrics_csv(csv_path: str, stage: str = "stable") -> Dict[str, float]:
+    """解析CSV，返回 Metric 类所需的“延迟/输出吞吐量”字段（仅保留类中存在的字段）"""
     try:
         df = pd.read_csv(csv_path)
     except FileNotFoundError:
@@ -22,25 +21,41 @@ def parse_csv_metrics(csv_path: str, stage: str = "stable") -> Dict[str, float]:
     if df_stage.empty:
         raise ValueError(f"CSV中未找到stage={stage}的数据")
 
+    # 获取 Metric 类的所有字段名（后续扩展字段无需修改此处）
+    metric_field_names = {field.name for field in Metric.__dataclass_fields__.values()}
     csv_metrics = {}
+
     for _, row in df_stage.iterrows():
         param = row["Performance Parameters"]
         # 解析延迟类指标（E2EL/TTFT/TPOT/ITL）
         if param in ["E2EL", "TTFT", "TPOT", "ITL"]:
             avg_key = f"avg_{param.lower()}"
             p99_key = f"p99_{param.lower()}"
-            # 移除单位（如" ms"）并转换为float
-            csv_metrics[avg_key] = float(row["Average"].replace(" ms", ""))
-            csv_metrics[p99_key] = float(row["P99"].replace(" ms", ""))
-        # 解析输出token吞吐量
+            # 仅保留 Metric 类中存在的字段，避免多余数据
+            if avg_key in metric_field_names:
+                csv_metrics[avg_key] = float(row["Average"].replace(" ms", ""))
+            if p99_key in metric_field_names:
+                csv_metrics[p99_key] = float(row["P99"].replace(" ms", ""))
+        # 解析输出token吞吐量（对应 Metric 的 output_token_throughput 字段）
         elif param == "OutputTokenThroughput":
-            csv_metrics["output_token_throughput"] = float(row["Average"].replace(" token/s", ""))
+            output_key = "output_token_throughput"
+            if output_key in metric_field_names:
+                csv_metrics[output_key] = float(row["Average"].replace(" token/s", ""))
+
+    # 校验：确保CSV解析出所有“仅在CSV中获取”的 Metric 必需字段
+    csv_required_fields = [
+        "avg_e2el", "avg_ttft", "avg_tpot", "avg_itl", "p99_e2el", "p99_ttft", "p99_tpot", "p99_itl",
+        "output_token_throughput"
+    ]
+    # 过滤出 Metric 类中存在但未解析到的字段
+    missing_fields = [f for f in csv_required_fields if f in metric_field_names and f not in csv_metrics]
+    if missing_fields:
+        raise ValueError(f"CSV解析缺失 Metric 必需字段：{missing_fields}（文件：{csv_path}）")
 
     return csv_metrics
 
-
 def parse_metrics_json(json_path: str, stage: str = "stable") -> Dict[str, Any]:
-    """解析统计信息JSON文件（如吞吐量、并发数）"""
+    """解析JSON，返回 Metric 类所需的“并发/吞吐量”字段（按类字段类型自动转换）"""
     try:
         with open(json_path, "r", encoding="utf-8") as f:
             json_data = json.load(f)
@@ -49,19 +64,52 @@ def parse_metrics_json(json_path: str, stage: str = "stable") -> Dict[str, Any]:
     except json.JSONDecodeError:
         raise ValueError(f"指标JSON格式错误: {json_path}")
 
-    # 提取核心指标
-    return {
-        "max_concurrency": int(json_data["Max Concurrency"][stage]),
-        "request_throughput": float(json_data["Request Throughput"][stage].replace(" req/s", "")),
-        "total_input_tokens": int(json_data["Total Input Tokens"][stage]),
-        "total_generated_tokens": int(json_data["Total generated tokens"][stage]),
-        "input_token_throughput": float(json_data["Input Token Throughput"][stage].replace(" token/s", "")),
-        "total_token_throughput": float(json_data["Total Token Throughput"][stage].replace(" token/s", ""))
+    # Metric 类字段名与JSON键的映射
+    json_to_metric_map = {
+        "Max Concurrency": "max_concurrency",
+        "Request Throughput": "request_throughput",
+        "Total Input Tokens": "total_input_tokens",
+        "Total generated tokens": "total_generated_tokens",
+        "Input Token Throughput": "input_token_throughput",
+        "Total Token Throughput": "total_token_throughput"
     }
+    metric_field_names = {field.name for field in Metric.__dataclass_fields__.values()}
+    json_metrics = {}
 
+    for json_key, metric_key in json_to_metric_map.items():
+        # 跳过 Metric 类中不存在的字段
+        if metric_key not in metric_field_names:
+            continue
+        # 获取JSON原始值并处理单位
+        raw_value = json_data[json_key][stage]
+        if isinstance(raw_value, str):
+            # 移除单位（req/s 或 token/s）
+            cleaned_value = raw_value.replace(" req/s", "").replace(" token/s", "")
+        else:
+            cleaned_value = raw_value
+
+        # 按 Metric 类字段的类型转换值（确保类型匹配，如int/float）
+        metric_field_type = Metric.__dataclass_fields__[metric_key].type
+        try:
+            json_metrics[metric_key] = metric_field_type(cleaned_value)
+        except (ValueError, TypeError):
+            raise ValueError(
+                f"JSON字段 {json_key} 的值 {raw_value} 无法转换为 Metric.{metric_key} 的类型 {metric_field_type.__name__}"
+            )
+
+    # 校验：确保JSON解析出所有“仅在JSON中获取”的 Metric 必需字段
+    json_required_fields = [
+        "max_concurrency", "request_throughput", "total_input_tokens",
+        "total_generated_tokens", "input_token_throughput", "total_token_throughput"
+    ]
+    missing_fields = [f for f in json_required_fields if f in metric_field_names and f not in json_metrics]
+    if missing_fields:
+        raise ValueError(f"JSON解析缺失 Metric 必需字段：{missing_fields}（文件：{json_path}）")
+
+    return json_metrics
 
 def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
-    """解析PR信息JSON文件，返回PRInfo对象和对应的commit_id"""
+    """解析PR JSON，返回 PRInfo 对象和 commit_id"""
     try:
         with open(pr_json_path, "r", encoding="utf-8") as f:
             pr_data = json.load(f)
@@ -91,23 +139,32 @@ def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
         except ValueError:
             raise ValueError(f"pr_time格式错误（应为YYYYMMDDHHMMSS）: {pr_data['pr_time']}")
 
-    # 构建PRInfo对象
+    # 构建 PRInfo 对象
     pr_info = PRInfo(
         pr_id=pr_data["pr_id"],
         pr_date=pr_date,
         pr_time=pr_time,
-        pr_author=pr_data.get("pr_subcommiter"),  # pr_subcommiter对应作者
-        pr_author_email=None,  # 文件中无该字段
-        pr_body=None  # 文件中无该字段
+        pr_author=pr_data.get("pr_subcommiter"),
+        pr_author_email=None,
+        pr_body=None
     )
 
     return pr_info, pr_data["commit_id"]
 
-
 def merge_metrics(csv_metrics: Dict[str, float], json_metrics: Dict[str, Any]) -> Dict[str, Any]:
-    """合并CSV和JSON解析的指标，生成完整的Metric数据"""
-    return {**csv_metrics, **json_metrics}
+    """合并CSV和JSON指标，先生成 Metric 对象（确保字段完整），再转为字典"""
+    # 合并所有指标字段
+    all_metric_fields = {**csv_metrics, **json_metrics}
+    # 校验：确保覆盖 Metric 类的所有字段（核心！避免扩展字段漏解析）
+    metric_required_fields = [field.name for field in Metric.__dataclass_fields__.values()]
+    missing_fields = [f for f in metric_required_fields if f not in all_metric_fields]
+    if missing_fields:
+        raise ValueError(f"合并指标缺失 Metric 必需字段：{missing_fields}")
 
+    # 生成 Metric 对象（强类型校验，确保数据合法）
+    metric_obj = Metric(**all_metric_fields)
+    # 转为字典（用于后续与 PR 信息整合）
+    return asdict(metric_obj)
 
 def create_metrics_data(
         csv_path: str,
@@ -116,29 +173,23 @@ def create_metrics_data(
         model_name: str,
         stage: str = "stable"
 ) -> Dict[str, Dict]:
-    """
-    从文件生成metrics_data结构
-    参数:
-        csv_path: 性能指标CSV路径
-        metrics_json_path: 统计信息JSON路径
-        pr_json_path: PR信息JSON路径
-        model_name: 模型名称（如"Qwen3-32B"）
-        stage: 阶段（如"stable"）
-    返回:
-        按commit_id组织的metrics_data字典
-    """
-    # 解析基础数据
-    pr_info, commit_id = parse_pr_json(pr_json_path)  # PR信息 + commit_id
-    csv_metrics = parse_csv_metrics(csv_path, stage)  # CSV指标
-    json_metrics = parse_metrics_json(metrics_json_path, stage)  # JSON指标
+    """生成目标格式数据：整合 PRInfo + Metric（基于 Metric 类确保指标完整）"""
+    # 解析基础数据（PR信息 + 分源指标）
+    pr_info, commit_id = parse_pr_json(pr_json_path)
+    csv_metrics = parse_metrics_csv(csv_path, stage)
+    json_metrics = parse_metrics_json(metrics_json_path, stage)
 
-    # 生成复合ID：格式 "commit_id_model_name"（确保唯一标识）
+    # 合并指标（生成 Metric 对象后转为字典，确保字段完整）
+    full_metrics_dict = merge_metrics(csv_metrics, json_metrics)
+
+    # 生成复合ID（保留原逻辑：commit_id + model_name，确保唯一）
     composite_id = f"{commit_id}_{model_name}"
 
-    # 整合source内容：PR信息（字典格式） + 合并后的指标（字典格式）
-    pr_info_dict = asdict(pr_info)  # 将PRInfo对象转为字典
-    full_metrics_dict = merge_metrics(csv_metrics, json_metrics)  # 合并指标
-    source = {**pr_info_dict, **full_metrics_dict}  # 合并PR信息和指标
+    # 整合 PR 信息与指标（source 包含 PR 字段 + 完整 Metric 字段）
+    source = {
+        **asdict(pr_info),  # PRInfo 转为字典
+        **full_metrics_dict  # 完整 Metric 字段
+    }
 
     # 返回目标格式
     return {
@@ -447,15 +498,15 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Any]]
     # - 总表：所有有效数据汇总
     total_data: List[Dict[str, Any]] = []
     total_existing_ids: set = set()
-    
+
     # - commit_id维度：key=commit_id，value=该commit下所有模型数据
     commit_id_grouped: DefaultDict[str, List[Dict[str, Any]]] = defaultdict(list)
     commit_existing_ids: DefaultDict[str, set] = defaultdict(set)
-    
+
     # - 日期维度：key=日期字符串（YYYYMMDD），value=该日期下所有模型数据
     date_grouped: DefaultDict[str, List[Dict[str, Any]]] = defaultdict(list)
     date_existing_ids: DefaultDict[str, set] = defaultdict(set)
-    
+
     # - 模型-commit_id组合记录：确保每个组合都有数据（用于后续校验）
     model_commit_pairs: set = set()
 
@@ -480,7 +531,7 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Any]]
                 _, _, commit_dir_full, model_names = get_dynamic_paths(target_date, commit_id)
 
                 if not model_names:
-                    print(f"⚠commit_id {commit_id} 下无模型子目录，跳过该commit")
+                    print(f"commit_id {commit_id} 下无模型子目录，跳过该commit")
                     # 即使无模型，也需在commit_id维度保留空列表（确保该commit有对应记录）
                     commit_id_grouped[commit_id] = []
                     continue
