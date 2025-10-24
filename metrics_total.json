@@ -3,6 +3,7 @@
     "ID": "5e6f7h8m_DeepSeek-V3.2",
     "source": {
       "pr_id": "123456",
+      "commit_id": "5e6f7h8m",
       "pr_date": "2025-10-22",
       "pr_time": "15:20:11",
       "pr_branch": "main",
@@ -32,6 +33,7 @@
     "ID": "5e6f7h8m_LongCat-Flash-Chat",
     "source": {
       "pr_id": "123456",
+      "commit_id": "5e6f7h8m",
       "pr_date": "2025-10-22",
       "pr_time": "15:20:11",
       "pr_branch": "main",
@@ -61,6 +63,7 @@
     "ID": "5e6f7h8m_Qwen3-235B-22B",
     "source": {
       "pr_id": "123456",
+      "commit_id": "5e6f7h8m",
       "pr_date": "2025-10-22",
       "pr_time": "15:20:11",
       "pr_branch": "main",
@@ -90,6 +93,7 @@
     "ID": "5e6f7h8m_DeepSeek-V3",
     "source": {
       "pr_id": "123456",
+      "commit_id": "5e6f7h8m",
       "pr_date": "2025-10-22",
       "pr_time": "15:20:11",
       "pr_branch": "main",
@@ -119,6 +123,7 @@
     "ID": "5e6f7h8m_Qwen3-32B",
     "source": {
       "pr_id": "123456",
+      "commit_id": "5e6f7h8m",
       "pr_date": "2025-10-22",
       "pr_time": "15:20:11",
       "pr_branch": "main",
@@ -148,6 +153,7 @@
     "ID": "1a2b3c4d_DeepSeek-V3.2",
     "source": {
       "pr_id": "123456",
+      "commit_id": "1a2b3c4d",
       "pr_date": "2025-10-22",
       "pr_time": "15:20:11",
       "pr_branch": "main",
@@ -177,6 +183,7 @@
     "ID": "1a2b3c4d_LongCat-Flash-Chat",
     "source": {
       "pr_id": "123456",
+      "commit_id": "1a2b3c4d",
       "pr_date": "2025-10-22",
       "pr_time": "15:20:11",
       "pr_branch": "main",
@@ -206,6 +213,7 @@
     "ID": "1a2b3c4d_Qwen3-235B-22B",
     "source": {
       "pr_id": "123456",
+      "commit_id": "1a2b3c4d",
       "pr_date": "2025-10-22",
       "pr_time": "15:20:11",
       "pr_branch": "main",
@@ -235,6 +243,7 @@
     "ID": "1a2b3c4d_DeepSeek-V3",
     "source": {
       "pr_id": "123456",
+      "commit_id": "1a2b3c4d",
       "pr_date": "2025-10-22",
       "pr_time": "15:20:11",
       "pr_branch": "main",
@@ -264,6 +273,7 @@
     "ID": "1a2b3c4d_Qwen3-32B",
     "source": {
       "pr_id": "123456",
+      "commit_id": "1a2b3c4d",
       "pr_date": "2025-10-22",
       "pr_time": "15:20:11",
       "pr_branch": "main",
