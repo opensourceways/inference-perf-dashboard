@@ -146,7 +146,6 @@ def create_metrics_data(
         "source": source
     }
 
-
 def batch_create_metrics_data(model_configs: List[Dict[str, str]]) -> List[Dict[str, Dict]]:
     """
     批量生成目标格式数据：返回列表，每个元素是单模型的 {"ID": ..., "source": ...}
@@ -410,7 +409,36 @@ def _extract_id_from_data(data: Any, data_type: str) -> str:
         raise Exception(f"{data_type}格式不支持（仅列表/字典），实际：{type(data).__name__}")
 
 
-def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Dict]]:
+def ensure_unique_id(
+        target_list: List[Dict[str, Any]],
+        new_item: Dict[str, Any],
+        existing_ids: set  # 传入外部维护的ID集合，避免重复遍历列表
+) -> bool:
+    """
+    检查新数据的ID是否已存在，确保唯一性
+    参数:
+        target_list: 要添加数据的目标列表（如total_data、cid_data等）
+        new_item: 待添加的新数据
+        existing_ids: 已存在的ID集合（用于快速校验，避免O(n)遍历）
+    返回:
+        bool: 新数据是否成功添加（True=添加，False=重复跳过）
+    """
+    # 提取新数据的ID（确保ID字段存在）
+    new_id = new_item.get("ID")
+    if not new_id:
+        raise ValueError("待添加的数据缺少'ID'字段，无法进行唯一性校验")
+
+    # 检查ID是否已存在
+    if new_id in existing_ids:
+        print(f"发现重复ID：{new_id}，已跳过该数据")
+        return False
+    else:
+        # 新增数据，更新列表和ID集合
+        target_list.append(new_item)
+        existing_ids.add(new_id)
+        return True
+
+def generate_metrics_data(target_date: str = "20251022") -> list[Any] | None:
     """
     主函数：生成所有有效模型的metrics数据并写入文件
     参数:
@@ -419,8 +447,13 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Dict]
         所有有效模型的metrics数据列表
     """
     total_data = []  # 总表：存储所有模型数据
-    commit_id_grouped = defaultdict(list)  # 按commit_id分组：key=commit_id，value=模型数据列表
-    date_grouped = defaultdict(list)  # 按日期分组：key=日期字符串，value=模型数据列表
+    total_existing_ids = set()  # 总表已存在的ID集合
+
+    commit_id_grouped = defaultdict(list)
+    commit_existing_ids = defaultdict(set)  # 按commit_id分组的ID集合（key: commit_id，value: 该组已存在的ID）
+
+    date_grouped = defaultdict(list)
+    date_existing_ids = defaultdict(set)  # 按日期分组的ID集合（key: 日期，value: 该日期已存在的ID）
 
     all_valid_metrics = []
     print(f"=== 开始生成metrics数据（目标日期：{target_date}）===")
@@ -438,9 +471,9 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Dict]
             if sample_model:
                 _, _, sample_file_paths = check_model_files(current_date_str, commit_id, sample_model)
                 # 解析PR文件，提取commit_id
-                _, current_commit_id = parse_pr_json(sample_file_paths["pr_json_path"])
+                _, commit_id = parse_pr_json(sample_file_paths["pr_json_path"])
             else:
-                current_commit_id = "unknown_commit"  # 无模型时默认值
+                commit_id = "unknown_commit"  # 无模型时默认值
     except Exception as e:
         print(f"初始化失败：{str(e)}")
         return all_valid_metrics
@@ -466,26 +499,46 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Dict]
                 all_valid_metrics.append(current_data)
                 print(f"模型 {model_name} 数据生成成功")
 
-                total_data.append(current_data)  # 加入总表
-                commit_id_grouped[commit_id].append(current_data)  # 按当前commit_id分组
-                date_grouped[current_date_str].append(current_data)  # 按当前日期分组
+                # 总表去重
+                total_added = ensure_unique_id(
+                    target_list=total_data,
+                    new_item=current_data,
+                    existing_ids=total_existing_ids
+                )
+
+                # commit_id分组去重（当前commit_id对应的分组）
+                if total_added:  # 总表添加成功才加入分组（避免重复处理）
+                    commit_added = ensure_unique_id(
+                        target_list=commit_id_grouped[commit_id],
+                        new_item=current_data,
+                        existing_ids=commit_existing_ids[commit_id]
+                    )
+
+                    # 日期分组去重（当前日期对应的分组）
+                    if commit_added:  # commit分组添加成功才加入日期分组
+                        ensure_unique_id(
+                            target_list=date_grouped[current_date_str],
+                            new_item=current_data,
+                            existing_ids=date_existing_ids[current_date_str]
+                        )
 
             except Exception as e:
                 print(f"模型 {model_name} 跳过：{str(e)}")
                 continue
 
-            # 写入单模型文件
-            write_model_data_to_file(current_date_str, commit_id, model_name, current_data)
+                # 写入单模型文件（原有逻辑）
+            write_model_data_to_file(current_date_str, model_name, current_data)
 
-        # ---------------------- 所有模型处理完成后，生成三类聚合文件 ----------------------
-        if total_data:
-            write_aggregated_files(total_data, commit_id_grouped, date_grouped, current_date_str, commit_id)
-        else:
-            print("无有效模型数据，不生成聚合文件")
+            # 生成聚合文件（基于去重后的数据）
+            if total_data:
+                write_aggregated_files(total_data, commit_id_grouped, date_grouped, current_date_str, commit_id)
+            else:
+                print("无有效模型数据，不生成聚合文件")
 
-    # 流程结束
-    print(f"=== 处理完成！共生成 {len(all_valid_metrics)} 个模型的有效数据 ===")
-    return all_valid_metrics
+            print(f"=== 处理完成！共生成 {len(all_valid_metrics)} 个模型的有效数据（去重后总表{len(total_data)}条） ===")
+            return all_valid_metrics
+    return None
+
 
 # ---------------------- 函数调用（主入口） ----------------------
 if __name__ == "__main__":
