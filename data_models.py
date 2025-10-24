@@ -5,6 +5,8 @@ from dataclasses import dataclass
 class Metric:
     """模型性能指标类，包含延迟、吞吐量等核心指标"""
     __dataclass_fields__ = None
+    model_name: str
+    device: str
     avg_e2el: float  # 平均端到端延迟（ms）
     avg_ttft: float  # 平均首token生成时间（ms）
     avg_tpot: float  # 平均每个输出token时间（ms）
@@ -28,6 +30,7 @@ class PRInfo:
     pr_id: str
     pr_date: str  # 格式：YYYY-MM-DD
     pr_time: str = None  # 格式：HH:MM:SS（可选）
+    pr_branch: str = None
     pr_author: str = None  # 提交者（可选）
     pr_author_email: str = None  # 提交者邮箱（可选）
     pr_body: str = None  # PR描述（可选）
