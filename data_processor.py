@@ -526,8 +526,8 @@ def generate_metrics_data(target_date: str = "20251022") -> list[Any] | None:
                 print(f"模型 {model_name} 跳过：{str(e)}")
                 continue
 
-                # 写入单模型文件（原有逻辑）
-            write_model_data_to_file(current_date_str, model_name, current_data)
+            # 写入单模型文件
+            write_model_data_to_file(current_date_str, commit_id, model_name, current_data)
 
             # 生成聚合文件（基于去重后的数据）
             if total_data:
