@@ -498,7 +498,10 @@ def generate_metrics_data(target_date: str = "20251022") -> list[Any] | None:
                 current_data = generate_single_model_data(model_name, file_paths)
                 all_valid_metrics.append(current_data)
                 print(f"模型 {model_name} 数据生成成功")
-
+                
+                # 写入单模型文件
+                write_model_data_to_file(current_date_str, commit_id, model_name, current_data)
+                
                 # 总表去重
                 total_added = ensure_unique_id(
                     target_list=total_data,
@@ -525,9 +528,6 @@ def generate_metrics_data(target_date: str = "20251022") -> list[Any] | None:
             except Exception as e:
                 print(f"模型 {model_name} 跳过：{str(e)}")
                 continue
-
-            # 写入单模型文件
-            write_model_data_to_file(current_date_str, commit_id, model_name, current_data)
 
             # 生成聚合文件（基于去重后的数据）
             if total_data:
