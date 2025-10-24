@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import pandas as pd
 import json
 import os
@@ -216,8 +218,6 @@ def get_data_dir(date_str: str = None) -> tuple[str, str, str]:
 
     return current_date_str, date_dir, commit_dir
 
-
-# ---------------------- 子函数1：获取动态路径参数（单一职责：路径相关） ----------------------
 def get_dynamic_paths(target_date: str = None) -> Tuple[str, str, List[str]]:
     """
     获取日期字符串、commit目录路径、模型名称列表
@@ -238,7 +238,6 @@ def get_dynamic_paths(target_date: str = None) -> Tuple[str, str, List[str]]:
         raise Exception(f"获取动态路径失败：{str(e)}")
 
 
-# ---------------------- 子函数2：校验模型所需文件是否齐全（单一职责：文件校验） ----------------------
 def check_model_files(current_date_str: str, model_name: str) -> Tuple[bool, List[str], Dict[str, str]]:
     """
     校验当前模型的CSV、指标JSON、PR JSON文件是否存在
@@ -266,8 +265,6 @@ def check_model_files(current_date_str: str, model_name: str) -> Tuple[bool, Lis
 
     return len(missing_files) == 0, missing_files, file_paths
 
-
-# ---------------------- 子函数3：生成单个模型的metrics数据（单一职责：数据生成） ----------------------
 def generate_single_model_data(model_name: str, file_paths: Dict[str, str]) -> Dict[str, Any]:
     """
     根据文件路径生成当前模型的metrics数据
@@ -297,7 +294,6 @@ def generate_single_model_data(model_name: str, file_paths: Dict[str, str]) -> D
         raise Exception(f"数据生成失败：{str(e)}")
 
 
-# ---------------------- 子函数4：处理文件写入与去重（单一职责：文件写入+去重） ----------------------
 def write_model_data_to_file(current_date_str: str, model_name: str, current_data: Dict[str, Any]) -> None:
     """
     处理模型数据的写入，含去重逻辑（ID存在则跳过，否则写入）
@@ -306,19 +302,19 @@ def write_model_data_to_file(current_date_str: str, model_name: str, current_dat
         model_name: 模型名称
         current_data: 单个模型的metrics数据
     """
-    # 1. 准备输出路径和文件名
+    # 准备输出路径和文件名
     output_root_dir = "output"
     os.makedirs(output_root_dir, exist_ok=True)  # 确保目录存在
     output_filename = f"{current_date_str}_commit_id_{model_name}.json"
     output_file = os.path.join(output_root_dir, output_filename)
 
-    # 2. 去重判断
+    # 去重判断
     id_exists = False
     if os.path.exists(output_file):
         print(f"检测到模型 {model_name} 已有文件：{output_filename}，校验ID...")
         id_exists = _check_existing_id(output_file, current_data)  # 内部辅助函数
 
-    # 3. 写入文件（无重复ID时）
+    # 写入文件（无重复ID时）
     if not id_exists:
         try:
             with open(output_file, "w", encoding="utf-8") as f:
@@ -329,8 +325,54 @@ def write_model_data_to_file(current_date_str: str, model_name: str, current_dat
     else:
         print(f"模型 {model_name} 跳过：已有相同ID数据")
 
+def write_aggregated_files(
+    total_data: List[Dict[str, Any]],
+    commit_id_grouped: Dict[str, List[Dict[str, Any]]],
+    date_grouped: Dict[str, List[Dict[str, Any]]],
+    current_date_str: str,
+    commit_id: str  # 当前批次的commit_id（从PR文件中提取，确保唯一）
+) -> None:
+    """
+    生成三类聚合文件：总表、commit_id维度、日期维度
+    参数:
+        total_data: 总表数据（所有模型数据列表）
+        commit_id_grouped: 按commit_id分组的数据（key: commit_id，value: 该commit下所有模型数据）
+        date_grouped: 按日期分组的数据（key: 日期字符串，value: 该日期下所有模型数据）
+        current_date_str: 当前处理的日期（YYYYMMDD）
+        commit_id: 当前批次的commit_id（从PR文件提取，确保分组key唯一）
+    """
+    output_root_dir = "output"
+    os.makedirs(output_root_dir, exist_ok=True)  # 确保输出目录存在
 
-# ---------------------- 子函数4的辅助函数：校验已有文件的ID（内部使用，不对外暴露） ----------------------
+    # 生成【总表文件】（所有模型数据汇总）
+    total_file = os.path.join(output_root_dir, "metrics_total.json")
+    try:
+        with open(total_file, "w", encoding="utf-8") as f:
+            json.dump(total_data, f, indent=2, ensure_ascii=False)
+        print(f"总表文件已保存：{os.path.abspath(total_file)}（共{len(total_data)}条数据）")
+    except Exception as e:
+        print(f"保存总表文件失败：{str(e)}")
+
+    # 生成【commit_id维度文件】（按commit_id分组，单个commit一个文件）
+    for cid, cid_data in commit_id_grouped.items():
+        commit_file = os.path.join(output_root_dir, f"metrics_commit_{cid}.json")
+        try:
+            with open(commit_file, "w", encoding="utf-8") as f:
+                json.dump(cid_data, f, indent=2, ensure_ascii=False)
+            print(f"✅ commit_id维度文件已保存：{os.path.abspath(commit_file)}（共{len(cid_data)}条数据）")
+        except Exception as e:
+            print(f"保存commit_id={cid}文件失败：{str(e)}")
+
+    # 生成【日期维度文件】（按日期分组，单个日期一个文件）
+    for date_str, date_data in date_grouped.items():
+        date_file = os.path.join(output_root_dir, f"metrics_date_{date_str}.json")
+        try:
+            with open(date_file, "w", encoding="utf-8") as f:
+                json.dump(date_data, f, indent=2, ensure_ascii=False)
+            print(f"✅ 日期维度文件已保存：{os.path.abspath(date_file)}（共{len(date_data)}条数据）")
+        except Exception as e:
+            print(f"保存日期={date_str}文件失败：{str(e)}")
+
 def _check_existing_id(output_file: str, current_data: Dict[str, Any]) -> bool:
     """内部辅助：检查已有文件的ID是否与当前数据ID重复"""
     try:
@@ -354,11 +396,10 @@ def _check_existing_id(output_file: str, current_data: Dict[str, Any]) -> bool:
         print(f"已有文件格式错误（非标准JSON），将覆盖文件")
         return False
     except Exception as e:
-        print(f"⚠校验ID时出错：{str(e)}，将覆盖文件")
+        print(f"校验ID时出错：{str(e)}，将覆盖文件")
         return False
 
 
-# ---------------------- 子函数4的辅助函数：提取数据中的ID（内部使用，不对外暴露） ----------------------
 def _extract_id_from_data(data: Any, data_type: str) -> str:
     """内部辅助：从数据（列表/字典）中提取ID，无ID则抛异常"""
     if isinstance(data, list):
@@ -376,7 +417,6 @@ def _extract_id_from_data(data: Any, data_type: str) -> str:
         raise Exception(f"{data_type}格式不支持（仅列表/字典），实际：{type(data).__name__}")
 
 
-# ---------------------- 主函数：整合所有子函数，串联流程（单一职责：流程控制） ----------------------
 def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Dict]]:
     """
     主函数：生成所有有效模型的metrics数据并写入文件
@@ -385,48 +425,76 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Dict]
     返回:
         所有有效模型的metrics数据列表
     """
+
+    # ---------------------- 新增：初始化聚合数据容器 ----------------------
+    total_data = []  # 总表：存储所有模型数据
+    commit_id_grouped = defaultdict(list)  # 按commit_id分组：key=commit_id，value=模型数据列表
+    date_grouped = defaultdict(list)  # 按日期分组：key=日期字符串，value=模型数据列表
+
     all_valid_metrics = []
     print(f"=== 开始生成metrics数据（目标日期：{target_date}）===")
 
-    # 1. 获取动态路径（调用子函数1）
+    # 获取动态路径
     try:
         current_date_str, commit_dir_full, model_names = get_dynamic_paths(target_date)
+        # 新增：从PR文件提取当前批次的commit_id（确保分组key唯一，复用check_model_files逻辑）
+        # 先获取任意一个模型的PR文件路径（所有模型共享同一个PR文件）
+        sample_model = model_names[0] if model_names else None
+        if sample_model:
+            _, _, sample_file_paths = check_model_files(current_date_str, sample_model)
+            # 解析PR文件，提取commit_id（复用原有parse_pr_json函数，需确保该函数已定义）
+            from data_processor import parse_pr_json  # 假设parse_pr_json在data_processor.py中
+            _, current_commit_id = parse_pr_json(sample_file_paths["pr_json_path"])
+        else:
+            current_commit_id = "unknown_commit"  # 无模型时默认值
     except Exception as e:
         print(f"初始化失败：{str(e)}")
         return all_valid_metrics
 
-    # 2. 遍历每个模型处理
+    # 遍历每个模型处理
     if not model_names:
         print("无模型可处理，流程结束")
         return all_valid_metrics
 
     for model_name in model_names:
-        print(f"\n--- 处理模型：{model_name} ---")
+        print(f"--- 处理模型：{model_name} ---")
 
-        # 3. 校验模型文件（调用子函数2）
+        # 校验模型文件
         is_file_valid, missing_files, file_paths = check_model_files(current_date_str, model_name)
         if not is_file_valid:
             print(f"模型 {model_name} 跳过：缺少文件 → {', '.join(missing_files)}")
             continue
 
-        # 4. 生成模型数据（调用子函数3）
+        # 生成模型数据
         try:
             current_data = generate_single_model_data(model_name, file_paths)
             all_valid_metrics.append(current_data)
             print(f"模型 {model_name} 数据生成成功")
+
+            # ---------------------- 新增：将当前模型数据加入聚合容器 ----------------------
+            total_data.append(current_data)  # 加入总表
+            commit_id_grouped[current_commit_id].append(current_data)  # 按当前commit_id分组
+            date_grouped[current_date_str].append(current_data)  # 按当前日期分组
+
         except Exception as e:
             print(f"模型 {model_name} 跳过：{str(e)}")
             continue
 
-        # 5. 写入文件（调用子函数4）
+        # 写入单模型文件
         write_model_data_to_file(current_date_str, model_name, current_data)
 
-    # 流程结束
-    print(f"\n=== 处理完成！共生成 {len(all_valid_metrics)} 个模型的有效数据 ===")
-    return all_valid_metrics
+    # ---------------------- 所有模型处理完成后，生成三类聚合文件 ----------------------
+    if total_data:
+        write_aggregated_files(total_data, commit_id_grouped, date_grouped, current_date_str, current_commit_id)
+    else:
+        print("无有效模型数据，不生成聚合文件")
 
+    # 流程结束
+    print(f"=== 处理完成！共生成 {len(all_valid_metrics)} 个模型的有效数据 ===")
+    return all_valid_metrics
 
 # ---------------------- 函数调用（主入口） ----------------------
 if __name__ == "__main__":
     # 可指定目标日期，如 generate_metrics_data("20251023")
     generate_metrics_data(target_date="20251022")
+
