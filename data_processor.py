@@ -142,6 +142,7 @@ def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
     # 构建 PRInfo 对象
     pr_info = PRInfo(
         pr_id=pr_data["pr_id"],
+        commit_id=pr_data["commit_id"],
         pr_date=pr_date,
         pr_time=pr_time,
         pr_branch=pr_data.get("pr_branch"),
