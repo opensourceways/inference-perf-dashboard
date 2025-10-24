@@ -216,17 +216,17 @@ def get_dynamic_paths(date_str: str = None, commit_id: str = None) -> tuple[str,
     根据传入的日期字符串生成数据目录路径，默认使用当前日期
     """
     current_date_str = get_date_str(date_str)
-    
+
     # 生成目录路径
     date_dir = os.path.join(ROOT_DIR, current_date_str)
     commit_dir_full = os.path.join(date_dir, commit_id)
-    
+
     try:
         # 获取commit目录下的模型子目录名
         model_names = get_subdir_names(commit_dir_full)
         if not model_names:
             print(f"警告：commit目录 {commit_dir_full} 下无模型子目录")
-            
+
         return current_date_str, date_dir, commit_dir_full, model_names
     except Exception as e:
         raise Exception(f"获取动态路径失败：{str(e)}")
@@ -287,7 +287,7 @@ def generate_single_model_data(model_name: str, file_paths: Dict[str, str]) -> D
         raise Exception(f"数据生成失败：{str(e)}")
 
 
-def write_model_data_to_file(current_date_str: str, model_name: str, current_data: Dict[str, Any]) -> None:
+def write_model_data_to_file(current_date_str: str, commit_id: str, model_name: str, current_data: Dict[str, Any]) -> None:
     """
     处理模型数据的写入，含去重逻辑（ID存在则跳过，否则写入）
     参数:
@@ -298,7 +298,7 @@ def write_model_data_to_file(current_date_str: str, model_name: str, current_dat
     # 准备输出路径和文件名
     output_root_dir = "output"
     os.makedirs(output_root_dir, exist_ok=True)  # 确保目录存在
-    output_filename = f"{current_date_str}_commit_id_{model_name}.json"
+    output_filename = f"{current_date_str}_{commit_id}_{model_name}.json"
     output_file = os.path.join(output_root_dir, output_filename)
 
     # 去重判断
@@ -429,7 +429,7 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Dict]
     current_date_str = get_date_str(target_date)
     current_date_str_full = os.path.join(ROOT_DIR, current_date_str)
     commit_ids = get_subdir_names(current_date_str_full)
-    
+
     try:
         for commit_id in commit_ids:
             _, _, commit_dir_full, model_names = get_dynamic_paths(target_date, commit_id)
@@ -475,8 +475,8 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Dict]
                 continue
 
             # 写入单模型文件
-            write_model_data_to_file(current_date_str, model_name, current_data)
-            
+            write_model_data_to_file(current_date_str, commit_id, model_name, current_data)
+
         # ---------------------- 所有模型处理完成后，生成三类聚合文件 ----------------------
         if total_data:
             write_aggregated_files(total_data, commit_id_grouped, date_grouped, current_date_str, commit_id)
