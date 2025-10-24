@@ -119,7 +119,7 @@ def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
         raise ValueError(f"PR JSON格式错误: {pr_json_path}")
 
     # 校验PR必填字段
-    required_fields = ["pr_id", "commit_id", "pr_date"]
+    required_fields = ["pr_id", "commit_id", "pr_date", "pr_branch"]
     missing_fields = [f for f in required_fields if f not in pr_data]
     if missing_fields:
         raise ValueError(f"PR JSON缺少必填字段: {missing_fields}")
@@ -144,6 +144,7 @@ def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
         pr_id=pr_data["pr_id"],
         pr_date=pr_date,
         pr_time=pr_time,
+        pr_branch=pr_data.get("pr_branch"),
         pr_author=pr_data.get("pr_subcommiter"),
         pr_author_email=None,
         pr_body=None
@@ -178,6 +179,9 @@ def create_metrics_data(
     pr_info, commit_id = parse_pr_json(pr_json_path)
     csv_metrics = parse_metrics_csv(csv_path, stage)
     json_metrics = parse_metrics_json(metrics_json_path, stage)
+
+    json_metrics["model_name"] = model_name
+    json_metrics["device"] = "Altlas A3"
 
     # 合并指标（生成 Metric 对象后转为字典，确保字段完整）
     full_metrics_dict = merge_metrics(csv_metrics, json_metrics)
