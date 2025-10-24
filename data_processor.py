@@ -184,7 +184,7 @@ def get_subdir_names(dir_path: str) -> List[str]:
 
     return subdir_names
 
-def get_data_dir(date_str: str = None, commit_id: str = None) -> tuple[str, str, str]:
+def get_date_str(date_str: str = None) -> str:
     """
     根据传入的日期字符串生成数据目录路径，默认使用当前日期
 
@@ -193,10 +193,7 @@ def get_data_dir(date_str: str = None, commit_id: str = None) -> tuple[str, str,
                   若为None，则自动使用当前日期
 
     返回:
-        tuple: (current_date_str, date_dir, commit_dir)
-              - current_date_str: 日期字符串（YYYYMMDD）
-              - date_dir: 日期目录完整路径（ROOT_DIR/YYYYMMDD）
-              - commit_dir: commit子目录完整路径（ROOT_DIR/YYYYMMDD/commit_id）
+        tuple: (current_date_str: 日期字符串（YYYYMMDD）
     """
     # 确定日期字符串：优先使用传入的date_str，否则用当前日期
     if date_str:
@@ -205,37 +202,34 @@ def get_data_dir(date_str: str = None, commit_id: str = None) -> tuple[str, str,
             # 尝试解析为日期对象，验证格式有效性
             datetime.strptime(date_str, "%Y%m%d")
             current_date_str = date_str
+            return current_date_str
         except ValueError:
             raise ValueError(f"传入的date_str格式错误，应为YYYYMMDD，实际为：{date_str}")
     else:
         # 无传入日期时，使用当前日期（YYYYMMDD）
         current_date = datetime.now().date()
         current_date_str = current_date.strftime("%Y%m%d")
+        return current_date_str
 
+def get_dynamic_paths(date_str: str = None, commit_id: str = None) -> tuple[str, str, str, list[str]]:
+    """
+    根据传入的日期字符串生成数据目录路径，默认使用当前日期
+    """
+    current_date_str = get_date_str(date_str)
+    
     # 生成目录路径
     date_dir = os.path.join(ROOT_DIR, current_date_str)
-    commit_dir = os.path.join(date_dir, commit_id)
-
-    return current_date_str, date_dir, commit_dir
-
-def get_dynamic_paths(target_date: str = None, commit_id: str = None) -> Tuple[str, str, List[str]]:
-    """
-    获取日期字符串、commit目录路径、模型名称列表
-    参数:
-        target_date: 目标日期（格式YYYYMMDD，如"20251022"）
-    返回:
-        (current_date_str, commit_dir_full, model_names)
-    """
+    commit_dir_full = os.path.join(date_dir, commit_id)
+    
     try:
-        current_date_str, date_dir, commit_dir_full = get_data_dir(target_date, commit_id)
         # 获取commit目录下的模型子目录名
         model_names = get_subdir_names(commit_dir_full)
         if not model_names:
             print(f"警告：commit目录 {commit_dir_full} 下无模型子目录")
-        return current_date_str, commit_dir_full, model_names
+            
+        return current_date_str, date_dir, commit_dir_full, model_names
     except Exception as e:
         raise Exception(f"获取动态路径失败：{str(e)}")
-
 
 def check_model_files(current_date_str: str, commit_id: str, model_name: str) -> Tuple[bool, List[str], Dict[str, str]]:
     """
@@ -430,20 +424,19 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Dict]
 
     all_valid_metrics = []
     print(f"=== 开始生成metrics数据（目标日期：{target_date}）===")
-    
-    # 获取current_date_str目录下的commit_ids
-    commit_ids = get_subdir_names(target_date)
-    
+
     # 获取动态路径
+    commit_ids = get_subdir_names(target_date)
+    current_date_str = get_date_str(target_date)
+    
     try:
         for commit_id in commit_ids:
-            current_date_str, commit_dir_full, model_names = get_dynamic_paths(target_date, commit_id)
+            _, _, commit_dir_full, model_names = get_dynamic_paths(target_date, commit_id)
             # 先获取任意一个模型的PR文件路径（所有模型共享同一个PR文件）
             sample_model = model_names[0] if model_names else None
             if sample_model:
                 _, _, sample_file_paths = check_model_files(current_date_str, commit_id, sample_model)
-                # 解析PR文件，提取commit_id（复用原有parse_pr_json函数，需确保该函数已定义）
-                from data_processor import parse_pr_json  # 假设parse_pr_json在data_processor.py中
+                # 解析PR文件，提取commit_id
                 _, current_commit_id = parse_pr_json(sample_file_paths["pr_json_path"])
             else:
                 current_commit_id = "unknown_commit"  # 无模型时默认值
@@ -451,44 +444,43 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Dict]
         print(f"初始化失败：{str(e)}")
         return all_valid_metrics
 
-    # 遍历每个commit_id每个模型
-    if not model_names:
-        print("无模型可处理，流程结束")
-        return all_valid_metrics
-    
     for commit_id in commit_ids:
         print(f"--- 处理模型：{commit_id} ---")
+        _, _, _, model_names = get_dynamic_paths(target_date, commit_id)
+        if not model_names:
+            print("无模型可处理，流程结束")
+            return all_valid_metrics
         for model_name in model_names:
             print(f"--- 处理模型：{model_name} ---")
-    
+
             # 校验模型文件
             is_file_valid, missing_files, file_paths = check_model_files(current_date_str, commit_id, model_name)
             if not is_file_valid:
                 print(f"模型 {model_name} 跳过：缺少文件 → {', '.join(missing_files)}")
                 continue
-    
+
             # 生成模型数据
             try:
                 current_data = generate_single_model_data(model_name, file_paths)
                 all_valid_metrics.append(current_data)
                 print(f"模型 {model_name} 数据生成成功")
-    
+
                 total_data.append(current_data)  # 加入总表
-                commit_id_grouped[current_commit_id].append(current_data)  # 按当前commit_id分组
+                commit_id_grouped[commit_id].append(current_data)  # 按当前commit_id分组
                 date_grouped[current_date_str].append(current_data)  # 按当前日期分组
-    
+
             except Exception as e:
                 print(f"模型 {model_name} 跳过：{str(e)}")
                 continue
-    
+
             # 写入单模型文件
             write_model_data_to_file(current_date_str, model_name, current_data)
-
-    # ---------------------- 所有模型处理完成后，生成三类聚合文件 ----------------------
-    if total_data:
-        write_aggregated_files(total_data, commit_id_grouped, date_grouped, current_date_str, current_commit_id)
-    else:
-        print("无有效模型数据，不生成聚合文件")
+            
+        # ---------------------- 所有模型处理完成后，生成三类聚合文件 ----------------------
+        if total_data:
+            write_aggregated_files(total_data, commit_id_grouped, date_grouped, current_date_str, commit_id)
+        else:
+            print("无有效模型数据，不生成聚合文件")
 
     # 流程结束
     print(f"=== 处理完成！共生成 {len(all_valid_metrics)} 个模型的有效数据 ===")
