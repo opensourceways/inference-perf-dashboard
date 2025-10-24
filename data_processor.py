@@ -426,8 +426,8 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Dict]
     print(f"=== 开始生成metrics数据（目标日期：{target_date}）===")
 
     # 获取动态路径
-    commit_ids = get_subdir_names(target_date)
     current_date_str = get_date_str(target_date)
+    commit_ids = get_subdir_names(current_date_str)
     
     try:
         for commit_id in commit_ids:
