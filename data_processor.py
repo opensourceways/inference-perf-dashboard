@@ -4,7 +4,7 @@ import pandas as pd
 import json
 import os
 from datetime import datetime
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, DefaultDict
 from dataclasses import asdict
 from data_models import Metric, PRInfo, create_metric_from_test_data
 
@@ -438,106 +438,136 @@ def ensure_unique_id(
         existing_ids.add(new_id)
         return True
 
-def generate_metrics_data(target_date: str = "20251022") -> list[Any] | None:
+def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Any]]:
     """
-    主函数：生成所有有效模型的metrics数据并写入文件
-    参数:
-        target_date: 目标日期（格式YYYYMMDD，默认"20251022"）
-    返回:
-        所有有效模型的metrics数据列表
+    主函数：确保生成 模型-commit_id组合数据 + 单commit_id数据 + 单日期数据 + 总表数据
+    返回：所有有效模型的metrics数据列表（确保多维度数据完整）
     """
-    total_data = []  # 总表：存储所有模型数据
-    total_existing_ids = set()  # 总表已存在的ID集合
+    # 初始化聚合容器（多维度数据存储，确保不丢失）
+    # - 总表：所有有效数据汇总
+    total_data: List[Dict[str, Any]] = []
+    total_existing_ids: set = set()
+    
+    # - commit_id维度：key=commit_id，value=该commit下所有模型数据
+    commit_id_grouped: DefaultDict[str, List[Dict[str, Any]]] = defaultdict(list)
+    commit_existing_ids: DefaultDict[str, set] = defaultdict(set)
+    
+    # - 日期维度：key=日期字符串（YYYYMMDD），value=该日期下所有模型数据
+    date_grouped: DefaultDict[str, List[Dict[str, Any]]] = defaultdict(list)
+    date_existing_ids: DefaultDict[str, set] = defaultdict(set)
+    
+    # - 模型-commit_id组合记录：确保每个组合都有数据（用于后续校验）
+    model_commit_pairs: set = set()
 
-    commit_id_grouped = defaultdict(list)
-    commit_existing_ids = defaultdict(set)  # 按commit_id分组的ID集合（key: commit_id，value: 该组已存在的ID）
-
-    date_grouped = defaultdict(list)
-    date_existing_ids = defaultdict(set)  # 按日期分组的ID集合（key: 日期，value: 该日期已存在的ID）
-
-    all_valid_metrics = []
+    all_valid_metrics: List[Dict[str, Any]] = []
     print(f"=== 开始生成metrics数据（目标日期：{target_date}）===")
 
-    # 获取动态路径
-    current_date_str = get_date_str(target_date)
-    current_date_str_full = os.path.join(ROOT_DIR, current_date_str)
-    commit_ids = get_subdir_names(current_date_str_full)
-
     try:
-        for commit_id in commit_ids:
-            _, _, commit_dir_full, model_names = get_dynamic_paths(target_date, commit_id)
-            # 先获取任意一个模型的PR文件路径（所有模型共享同一个PR文件）
-            sample_model = model_names[0] if model_names else None
-            if sample_model:
-                _, _, sample_file_paths = check_model_files(current_date_str, commit_id, sample_model)
-                # 解析PR文件，提取commit_id
-                _, commit_id = parse_pr_json(sample_file_paths["pr_json_path"])
-            else:
-                commit_id = "unknown_commit"  # 无模型时默认值
-    except Exception as e:
-        print(f"初始化失败：{str(e)}")
-        return all_valid_metrics
+        # 获取基础路径（日期目录、所有commit_id列表）
+        current_date_str = get_date_str(target_date)  # 如"20251022"
+        date_dir_full = os.path.join(ROOT_DIR, current_date_str)
+        commit_ids = get_subdir_names(date_dir_full)  # 所有commit_id目录列表
 
-    for commit_id in commit_ids:
-        print(f"--- 处理模型：{commit_id} ---")
-        _, _, _, model_names = get_dynamic_paths(target_date, commit_id)
-        if not model_names:
-            print("无模型可处理，流程结束")
+        if not commit_ids:
+            print(f"日期目录 {date_dir_full} 下无commit_id子目录，无法生成多维度数据")
             return all_valid_metrics
-        for model_name in model_names:
-            print(f"--- 处理模型：{model_name} ---")
 
-            # 校验模型文件
-            is_file_valid, missing_files, file_paths = check_model_files(current_date_str, commit_id, model_name)
-            if not is_file_valid:
-                print(f"模型 {model_name} 跳过：缺少文件 → {', '.join(missing_files)}")
-                continue
-
-            # 生成模型数据
+        # 遍历每个commit_id（核心：不提前返回，确保所有commit都处理）
+        for commit_id in commit_ids:
+            print(f"===== 开始处理 commit_id：{commit_id} =====")
             try:
-                current_data = generate_single_model_data(model_name, file_paths)
-                all_valid_metrics.append(current_data)
-                print(f"模型 {model_name} 数据生成成功")
-                
-                # 写入单模型文件
-                write_model_data_to_file(current_date_str, commit_id, model_name, current_data)
-                
-                # 总表去重
-                total_added = ensure_unique_id(
-                    target_list=total_data,
-                    new_item=current_data,
-                    existing_ids=total_existing_ids
-                )
+                # 获取当前commit下的模型列表（调用get_dynamic_paths，需返回4个参数：日期str、日期目录、commit目录、模型列表）
+                _, _, commit_dir_full, model_names = get_dynamic_paths(target_date, commit_id)
 
-                # commit_id分组去重（当前commit_id对应的分组）
-                if total_added:  # 总表添加成功才加入分组（避免重复处理）
-                    commit_added = ensure_unique_id(
-                        target_list=commit_id_grouped[commit_id],
-                        new_item=current_data,
-                        existing_ids=commit_existing_ids[commit_id]
+                if not model_names:
+                    print(f"⚠commit_id {commit_id} 下无模型子目录，跳过该commit")
+                    # 即使无模型，也需在commit_id维度保留空列表（确保该commit有对应记录）
+                    commit_id_grouped[commit_id] = []
+                    continue
+
+                # 遍历当前commit下的每个模型（处理模型-commit_id组合）
+                for model_name in model_names:
+                    print(f"--- 处理 模型-commit组合：{model_name}@{commit_id} ---")
+                    # 记录组合（用于后续校验）
+                    pair_key = f"{model_name}@{commit_id}"
+                    if pair_key in model_commit_pairs:
+                        print(f"模型-commit组合 {pair_key} 已处理，跳过重复数据")
+                        continue
+
+                    # 校验模型所需文件（确保文件齐全）
+                    is_file_valid, missing_files, file_paths = check_model_files(
+                        current_date_str, commit_id, model_name
                     )
+                    if not is_file_valid:
+                        print(f"组合 {pair_key} 跳过：缺少文件 → {', '.join(missing_files)}")
+                        continue
 
-                    # 日期分组去重（当前日期对应的分组）
-                    if commit_added:  # commit分组添加成功才加入日期分组
-                        ensure_unique_id(
-                            target_list=date_grouped[current_date_str],
-                            new_item=current_data,
-                            existing_ids=date_existing_ids[current_date_str]
-                        )
+                    # 生成单个模型数据
+                    try:
+                        current_data = generate_single_model_data(model_name, file_paths)
+                        if not current_data or "ID" not in current_data:
+                            raise ValueError("生成的模型数据为空或缺少必填字段'ID'")
+
+                        # 写入【模型-commit_id组合文件】（单文件，确保组合数据存在）
+                        write_model_data_to_file(current_date_str, commit_id, model_name, current_data)
+                        print(f"组合 {pair_key} 单文件写入成功")
+
+                        # 收集多维度聚合数据（去重后加入）
+                        # - 总表去重
+                        if ensure_unique_id(total_data, current_data, total_existing_ids):
+                            print(f"组合 {pair_key} 加入总表（去重后总表共{len(total_data)}条）")
+                            # - commit_id维度去重（当前commit）
+                            if ensure_unique_id(
+                                commit_id_grouped[commit_id], current_data, commit_existing_ids[commit_id]
+                            ):
+                                print(f"组合 {pair_key} 加入commit_id={commit_id}分组（共{len(commit_id_grouped[commit_id])}条）")
+                                # - 日期维度去重（当前日期）
+                                if ensure_unique_id(
+                                    date_grouped[current_date_str], current_data, date_existing_ids[current_date_str]
+                                ):
+                                    print(f"组合 {pair_key} 加入日期={current_date_str}分组（共{len(date_grouped[current_date_str])}条）")
+
+                        # 标记组合已处理
+                        model_commit_pairs.add(pair_key)
+                        all_valid_metrics.append(current_data)
+                        print(f"组合 {pair_key} 全维度数据处理完成")
+
+                    except Exception as e:
+                        print(f"组合 {pair_key} 数据生成失败：{str(e)}")
+                        continue
 
             except Exception as e:
-                print(f"模型 {model_name} 跳过：{str(e)}")
+                print(f"commit_id {commit_id} 处理异常：{str(e)}，继续处理下一个commit")
                 continue
 
-            # 生成聚合文件（基于去重后的数据）
-            if total_data:
-                write_aggregated_files(total_data, commit_id_grouped, date_grouped, current_date_str, commit_id)
-            else:
-                print("无有效模型数据，不生成聚合文件")
+        # 所有commit和模型处理完成后，生成【多维度聚合文件】（确保一次生成，避免重复）
+        print(f"===== 所有commit处理完成，开始生成聚合文件 =====")
+        # 确保日期维度有当前日期数据（即使为空，也保留空列表）
+        if current_date_str not in date_grouped:
+            date_grouped[current_date_str] = []
+        # 生成总表、commit_id维度、日期维度文件
+        write_aggregated_files(
+            total_data=total_data,
+            commit_id_grouped=commit_id_grouped,
+            date_grouped=date_grouped,
+            current_date_str=current_date_str,
+            commit_id=commit_ids[-1]  # 传入最后一个commit_id（仅用于函数参数兼容，不影响分组）
+        )
 
-            print(f"=== 处理完成！共生成 {len(all_valid_metrics)} 个模型的有效数据（去重后总表{len(total_data)}条） ===")
-            return all_valid_metrics
-    return None
+        # 数据完整性校验（打印汇总信息，确保多维度数据存在）
+        print(f"===== 数据完整性校验结果 =====")
+        print(f"1. 模型-commit组合数：{len(model_commit_pairs)}（已处理的唯一组合）")
+        print(f"2. commit_id维度数：{len(commit_id_grouped)}（每个commit都有对应数据）")
+        print(f"3. 日期维度数：{len(date_grouped)}（当前日期{current_date_str}已包含）")
+        print(f"4. 总表数据量：{len(total_data)}（去重后所有有效数据）")
+
+    except Exception as e:
+        print(f"全局处理异常：{str(e)}，但已尽力保留已处理数据")
+
+    # 最终返回所有有效模型数据（确保非空）
+    print(f"=== 整体处理完成！共生成 {len(all_valid_metrics)} 个有效模型数据 ===")
+    return all_valid_metrics if all_valid_metrics else []
+
 
 
 # ---------------------- 函数调用（主入口） ----------------------
