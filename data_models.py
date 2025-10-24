@@ -28,9 +28,11 @@ class Metric:
 class PRInfo:
     """PR信息类，包含PR编号、日期、作者等元信息"""
     pr_id: str
+    commit_id: str
     pr_date: str  # 格式：YYYY-MM-DD
     pr_time: str = None  # 格式：HH:MM:SS（可选）
     pr_branch: str = None
     pr_author: str = None  # 提交者（可选）
     pr_author_email: str = None  # 提交者邮箱（可选）
     pr_body: str = None  # PR描述（可选）
+
