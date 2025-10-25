@@ -54,7 +54,7 @@ class ESHandler:
                         "pr_id": {"type": "keyword"},
                         "commit_id": {"type": "keyword"},
                         "commit_title": {"type": "text"},
-                        "created_at": {"type": "date", "format": "yyyy-MM-dd'T'HH:mm:ss"},
+                        "created_at": {"type": "text"},
                         "sglang_branch": {"type": "keyword"},
                         "model_name": {"type": "keyword"},
                         "device": {"type": "keyword"},
@@ -115,12 +115,12 @@ class ESHandler:
         """
         with self.lock:  # 加锁保证原子性
             if self.check_id_exists(index_name, doc_id):
-                print(f"⚠️ 文档ID '{doc_id}' 已存在，无法重复添加")
+                print(f"文档ID '{doc_id}' 已存在，无法重复添加")
                 return False
             try:
                 response = self.es.index(index=index_name, id=doc_id, document=data)
                 if response["result"] == "created":
-                    print(f"✅ 文档 '{doc_id}' 添加成功")
+                    print(f"文档 '{doc_id}' 添加成功")
                     return True
                 else:
                     print(f"文档 '{doc_id}' 添加失败：{response['result']}")
@@ -203,10 +203,10 @@ class ESHandler:
 if __name__ == "__main__":
     # 配置ES连接信息（替换为你的实际信息）
     ES_CONFIG = {
-        "es_url": "https://localhost:9200",
+        "es_url": "https://127.0.0.1:9200",
         "username": "elastic",
-        "password": "你的ES密码",  # 替换为之前重置的密码
-        "index_name": "model_performance"
+        "password": "es30061833",
+        "index_name": "sglang_model_performance"
     }
 
     # 初始化ES处理器
