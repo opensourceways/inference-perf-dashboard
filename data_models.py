@@ -7,14 +7,18 @@ class Metric:
     __dataclass_fields__ = None
     model_name: str
     device: str
-    avg_e2el: float  # 平均端到端延迟（ms）
-    avg_ttft: float  # 平均首token生成时间（ms）
-    avg_tpot: float  # 平均每个输出token时间（ms）
-    avg_itl: float  # 平均token间隔延迟（ms）
-    p99_e2el: float  # P99分位端到端延迟（ms）
-    p99_ttft: float  # P99分位首token时间（ms）
-    p99_tpot: float  # P99分位每个输出token时间（ms）
-    p99_itl: float  # P99分位token间隔延迟（ms）
+    mean_e2el_ms: float  # 平均端到端延迟（ms）
+    mean_ttft_ms: float  # 平均首token生成时间（ms）
+    mean_tpot_ms: float  # 平均每个输出token时间（ms）
+    mean_itl_ms: float  # 平均token间隔延迟（ms）
+    p99_e2el_ms: float  # P99分位端到端延迟（ms）
+    p99_ttft_ms: float  # P99分位首token时间（ms）
+    p99_tpot_ms: float  # P99分位每个输出token时间（ms）
+    p99_itl_ms: float  # P99分位token间隔延迟（ms）
+    median_e2el_ms: float
+    median_ttft_ms: float
+    median_tpot_ms: float
+    median_itl_ms: float
     max_concurrency: int  # 最大并发数
     request_throughput: float  # 请求吞吐量（req/s）
     total_input_tokens: int  # 总输入tokens
@@ -26,13 +30,10 @@ class Metric:
 
 @dataclass
 class PRInfo:
-    """PR信息类，包含PR编号、日期、作者等元信息"""
+    """PR信息类，包含PR编号、日期、分支等元信息"""
     pr_id: str
     commit_id: str
-    pr_date: str  # 格式：YYYY-MM-DD
-    pr_time: str = None  # 格式：HH:MM:SS（可选）
-    pr_branch: str = None
-    pr_author: str = None  # 提交者（可选）
-    pr_author_email: str = None  # 提交者邮箱（可选）
-    pr_body: str = None  # PR描述（可选）
+    commit_title: str
+    created_at: str
+    sglang_branch: str = None
 
