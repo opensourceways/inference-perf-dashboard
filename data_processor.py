@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, DefaultDict
 from dataclasses import asdict
-from data_models import Metric, PRInfo
+from data.data_models import Metric, PRInfo
 
 ROOT_DIR = os.path.expanduser("~/.cache/aisbench")
 
@@ -29,13 +29,16 @@ def parse_metrics_csv(csv_path: str, stage: str = "stable") -> Dict[str, float]:
         param = row["Performance Parameters"]
         # 解析延迟类指标（E2EL/TTFT/TPOT/ITL）
         if param in ["E2EL", "TTFT", "TPOT", "ITL"]:
-            avg_key = f"avg_{param.lower()}"
-            p99_key = f"p99_{param.lower()}"
+            mean_key = f"avg_{param.lower()}_ms"
+            p99_key = f"p99_{param.lower()}_ms"
+            median_key = f"median_{param.lower()}_ms"
             # 仅保留 Metric 类中存在的字段，避免多余数据
-            if avg_key in metric_field_names:
-                csv_metrics[avg_key] = float(row["Average"].replace(" ms", ""))
+            if mean_key in metric_field_names:
+                csv_metrics[mean_key] = float(row["Average"].replace(" ms", ""))
             if p99_key in metric_field_names:
                 csv_metrics[p99_key] = float(row["P99"].replace(" ms", ""))
+            if median_key in metric_field_names:
+                csv_metrics[median_key] = float(row["Median"].replace(" ms", ""))
         # 解析输出token吞吐量（对应 Metric 的 output_token_throughput 字段）
         elif param == "OutputTokenThroughput":
             output_key = "output_token_throughput"
@@ -44,8 +47,8 @@ def parse_metrics_csv(csv_path: str, stage: str = "stable") -> Dict[str, float]:
 
     # 校验：确保CSV解析出所有“仅在CSV中获取”的 Metric 必需字段
     csv_required_fields = [
-        "avg_e2el", "avg_ttft", "avg_tpot", "avg_itl", "p99_e2el", "p99_ttft", "p99_tpot", "p99_itl",
-        "output_token_throughput"
+        "mean_e2el_ms", "mean_ttft_ms", "mean_tpot_ms", "mean_itl_ms", "p99_e2el_ms", "p99_ttft_ms", "p99_tpot_ms",
+        "p99_itl_ms", "median_e2el_ms", "median_ttft_ms", "median_tpot_ms", "median_itl_ms", "output_token_throughput"
     ]
     # 过滤出 Metric 类中存在但未解析到的字段
     missing_fields = [f for f in csv_required_fields if f in metric_field_names and f not in csv_metrics]
@@ -113,45 +116,44 @@ def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
     try:
         with open(pr_json_path, "r", encoding="utf-8") as f:
             pr_data = json.load(f)
+            # 确保JSON是字典格式（避免数组等非预期格式）
+            if not isinstance(pr_data, dict):
+                raise ValueError(f"PR JSON格式错误：应为字典，实际为{type(pr_data).__name__}")
     except FileNotFoundError:
         raise FileNotFoundError(f"PR JSON文件不存在: {pr_json_path}")
-    except json.JSONDecodeError:
-        raise ValueError(f"PR JSON格式错误: {pr_json_path}")
+    except json.JSONDecodeError as e:
+        raise ValueError(f"PR JSON格式错误（解析失败）: {pr_json_path}，详情：{str(e)}")
 
-    # 校验PR必填字段
-    required_fields = ["pr_id", "commit_id", "pr_date", "pr_branch"]
-    missing_fields = [f for f in required_fields if f not in pr_data]
+    required_fields = {"pr_id", "commit_id", "commit_title", "created_at", "sglang_branch"}
+    # 获取JSON中实际存在的字段
+    actual_fields = set(pr_data.keys())
+    # 检查缺失的必填字段
+    missing_fields = required_fields - actual_fields
     if missing_fields:
-        raise ValueError(f"PR JSON缺少必填字段: {missing_fields}")
+        raise ValueError(f"PR JSON缺少必填字段: {sorted(missing_fields)}（需包含{required_fields}）")
 
-    # 处理日期格式（20251022 → 2025-10-22）
+    empty_fields = [field for field in required_fields if not str(pr_data[field]).strip()]
+    if empty_fields:
+        raise ValueError(f"PR JSON字段值为空: {empty_fields}（需填写有效内容）")
+
+    created_at = pr_data["created_at"].strip()
     try:
-        pr_date = datetime.strptime(pr_data["pr_date"], "%Y%m%d").strftime("%Y-%m-%d")
+        # 仅校验格式，不转换（确保输入即符合目标格式）
+        datetime.strptime(created_at, "%Y-%m-%dT%H:%M:%S")
     except ValueError:
-        raise ValueError(f"pr_date格式错误（应为YYYYMMDD）: {pr_data['pr_date']}")
+        raise ValueError(
+            f"created_at格式错误: {created_at}（必须为YYYY-MM-DDTHH:MM:SS，示例：2025-10-22T14:51:00）"
+        )
 
-    # 处理时间格式（20251022144611 → 14:46:11）
-    pr_time = None
-    if "pr_time" in pr_data and pr_data["pr_time"]:
-        try:
-            time_str = pr_data["pr_time"][-6:]  # 截取后6位（HHMMSS）
-            pr_time = datetime.strptime(time_str, "%H%M%S").strftime("%H:%M:%S")
-        except ValueError:
-            raise ValueError(f"pr_time格式错误（应为YYYYMMDDHHMMSS）: {pr_data['pr_time']}")
-
-    # 构建 PRInfo 对象
     pr_info = PRInfo(
-        pr_id=pr_data["pr_id"],
-        commit_id=pr_data["commit_id"],
-        pr_date=pr_date,
-        pr_time=pr_time,
-        pr_branch=pr_data.get("pr_branch"),
-        pr_author=pr_data.get("pr_subcommiter"),
-        pr_author_email=None,
-        pr_body=None
+        pr_id=pr_data["pr_id"].strip(),
+        commit_id=pr_data["commit_id"].strip(),
+        commit_title=pr_data["commit_title"].strip(),
+        created_at=created_at,
+        sglang_branch=pr_data["sglang_branch"].strip()
     )
 
-    return pr_info, pr_data["commit_id"]
+    return pr_info, pr_data["commit_id"].strip()
 
 def merge_metrics(csv_metrics: Dict[str, float], json_metrics: Dict[str, Any]) -> Dict[str, Any]:
     """合并CSV和JSON指标，先生成 Metric 对象（确保字段完整），再转为字典"""
@@ -182,7 +184,7 @@ def create_metrics_data(
     json_metrics = parse_metrics_json(metrics_json_path, stage)
 
     json_metrics["model_name"] = model_name
-    json_metrics["device"] = "Altlas A3"
+    json_metrics["device"] = "Ascend910B3"
 
     # 合并指标（生成 Metric 对象后转为字典，确保字段完整）
     full_metrics_dict = merge_metrics(csv_metrics, json_metrics)
