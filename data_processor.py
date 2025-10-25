@@ -104,6 +104,7 @@ def parse_metrics_json(json_path: str, stage: str = "stable") -> Dict[str, Any]:
         "Total Input Tokens": "total_input_tokens",
         "Total generated tokens": "total_generated_tokens",
         "Input Token Throughput": "input_token_throughput",
+        "Output Token Throughput": "output_token_throughput",
         "Total Token Throughput": "total_token_throughput"
     }
     metric_field_names = {field.name for field in Metric.__dataclass_fields__.values()}
@@ -132,8 +133,8 @@ def parse_metrics_json(json_path: str, stage: str = "stable") -> Dict[str, Any]:
 
     # 校验：确保JSON解析出所有“仅在JSON中获取”的 Metric 必需字段
     json_required_fields = [
-        "max_concurrency", "request_throughput", "total_input_tokens",
-        "total_generated_tokens", "input_token_throughput", "total_token_throughput"
+        "max_concurrency", "request_throughput", "total_input_tokens", "total_generated_tokens",
+        "input_token_throughput", "output_token_throughput", "total_token_throughput"
     ]
     missing_fields = [f for f in json_required_fields if f in metric_field_names and f not in json_metrics]
     if missing_fields:
