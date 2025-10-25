@@ -10,8 +10,10 @@ from data.data_models import Metric, PRInfo
 
 ROOT_DIR = os.path.expanduser("~/.cache/aisbench")
 
-def parse_metrics_csv(csv_path: str, stage: str = "stable") -> Dict[str, float]:
-    """解析CSV，返回 Metric 类所需的“延迟/输出吞吐量”字段（仅保留类中存在的字段）"""
+
+def parse_metrics_csv(csv_path: str, stage: str = "stable") -> Dict[str, float | int]:
+    """解析性能CSV，返回Metric类所需字段（匹配类定义，含延迟/总token数）"""
+    # 读取CSV并按stage过滤
     try:
         df = pd.read_csv(csv_path)
     except FileNotFoundError:
@@ -19,43 +21,71 @@ def parse_metrics_csv(csv_path: str, stage: str = "stable") -> Dict[str, float]:
 
     df_stage = df[df["Stage"] == stage].copy()
     if df_stage.empty:
-        raise ValueError(f"CSV中未找到stage={stage}的数据")
+        raise ValueError(f"CSV中未找到stage='{stage}'的数据")
 
-    # 获取 Metric 类的所有字段名（后续扩展字段无需修改此处）
-    metric_field_names = {field.name for field in Metric.__dataclass_fields__.values()}
-    csv_metrics = {}
+    # 定义CSV参数与Metric字段的映射 格式：{CSV参数: {Metric字段名: 取值列名, 数据类型}}
+    param_mapping = {
+        # 延迟类参数：E2EL/TTFT/TPOT/ITL（对应mean/median/p99）
+        "E2EL": {
+            "mean_e2el_ms": ("Average", float),
+            "median_e2el_ms": ("Median", float),
+            "p99_e2el_ms": ("P99", float)
+        },
+        "TTFT": {
+            "mean_ttft_ms": ("Average", float),
+            "median_ttft_ms": ("Median", float),
+            "p99_ttft_ms": ("P99", float)
+        },
+        "TPOT": {
+            "mean_tpot_ms": ("Average", float),
+            "median_tpot_ms": ("Median", float),
+            "p99_tpot_ms": ("P99", float)
+        },
+        "ITL": {
+            "mean_itl_ms": ("Average", float),
+            "median_itl_ms": ("Median", float),
+            "p99_itl_ms": ("P99", float)
+        },
+        # 总token数：InputTokens→总输入，OutputTokens→总生成
+        "InputTokens": {
+            "total_input_tokens": ("Average", int)
+        },
+        "OutputTokens": {
+            "total_generated_tokens": ("Average", int)
+        }
+    }
 
+    # 获取Metric类的有效字段（避免生成类中不存在的字段）
+    metric_fields = {f.name for f in Metric.__dataclass_fields__.values()}
+    parsed_data: Dict[str, float | int] = {}
+
+    # 按映射解析CSV数据
     for _, row in df_stage.iterrows():
         param = row["Performance Parameters"]
-        # 解析延迟类指标（E2EL/TTFT/TPOT/ITL）
-        if param in ["E2EL", "TTFT", "TPOT", "ITL"]:
-            mean_key = f"avg_{param.lower()}_ms"
-            p99_key = f"p99_{param.lower()}_ms"
-            median_key = f"median_{param.lower()}_ms"
-            # 仅保留 Metric 类中存在的字段，避免多余数据
-            if mean_key in metric_field_names:
-                csv_metrics[mean_key] = float(row["Average"].replace(" ms", ""))
-            if p99_key in metric_field_names:
-                csv_metrics[p99_key] = float(row["P99"].replace(" ms", ""))
-            if median_key in metric_field_names:
-                csv_metrics[median_key] = float(row["Median"].replace(" ms", ""))
-        # 解析输出token吞吐量（对应 Metric 的 output_token_throughput 字段）
-        elif param == "OutputTokenThroughput":
-            output_key = "output_token_throughput"
-            if output_key in metric_field_names:
-                csv_metrics[output_key] = float(row["Average"].replace(" token/s", ""))
+        if param not in param_mapping:
+            continue  # 跳过CSV中无需解析的参数（如N列相关）
 
-    # 校验：确保CSV解析出所有“仅在CSV中获取”的 Metric 必需字段
-    csv_required_fields = [
-        "mean_e2el_ms", "mean_ttft_ms", "mean_tpot_ms", "mean_itl_ms", "p99_e2el_ms", "p99_ttft_ms", "p99_tpot_ms",
-        "p99_itl_ms", "median_e2el_ms", "median_ttft_ms", "median_tpot_ms", "median_itl_ms", "output_token_throughput"
+        # 处理当前参数的所有Metric字段映射
+        for metric_field, (csv_col, data_type) in param_mapping[param].items():
+            if metric_field not in metric_fields:
+                continue  # 跳过Metric类中不存在的字段
+
+            # 清理数值（去除"ms"单位，转成目标类型）
+            raw_value = str(row[csv_col]).replace(" ms", "").strip()
+            parsed_data[metric_field] = data_type(raw_value)
+
+    required_from_csv = [
+        # 延迟类必需字段
+        "mean_e2el_ms", "mean_ttft_ms", "mean_tpot_ms", "mean_itl_ms", "median_e2el_ms", "median_ttft_ms",
+        "median_tpot_ms", "median_itl_ms", "p99_e2el_ms", "p99_ttft_ms", "p99_tpot_ms", "p99_itl_ms",
+        "total_input_tokens", "total_generated_tokens"
     ]
-    # 过滤出 Metric 类中存在但未解析到的字段
-    missing_fields = [f for f in csv_required_fields if f in metric_field_names and f not in csv_metrics]
+    # 过滤出Metric类中存在但未解析到的字段
+    missing_fields = [f for f in required_from_csv if f in metric_fields and f not in parsed_data]
     if missing_fields:
-        raise ValueError(f"CSV解析缺失 Metric 必需字段：{missing_fields}（文件：{csv_path}）")
+        raise ValueError(f"CSV解析缺失Metric必需字段：{missing_fields}（文件：{csv_path}）")
 
-    return csv_metrics
+    return parsed_data
 
 def parse_metrics_json(json_path: str, stage: str = "stable") -> Dict[str, Any]:
     """解析JSON，返回 Metric 类所需的“并发/吞吐量”字段（按类字段类型自动转换）"""
