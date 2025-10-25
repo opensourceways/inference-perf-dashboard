@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, DefaultDict
 from dataclasses import asdict
-from data.data_models import Metric, PRInfo
+from data_models import Metric, PRInfo
 
 ROOT_DIR = os.path.expanduser("~/.cache/aisbench")
 
@@ -48,10 +48,10 @@ def parse_metrics_csv(csv_path: str, stage: str = "stable") -> Dict[str, float |
         },
         # 总token数：InputTokens→总输入，OutputTokens→总生成
         "InputTokens": {
-            "total_input_tokens": ("Average", int)
+            "total_input_tokens": ("Average", float)
         },
         "OutputTokens": {
-            "total_generated_tokens": ("Average", int)
+            "total_generated_tokens": ("Average", float)
         }
     }
 
