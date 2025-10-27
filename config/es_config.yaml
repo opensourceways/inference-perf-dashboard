@@ -1,0 +1,6 @@
+es:
+  url: "http://127.0.0.1:9200"
+  username: "elastic"
+  token: "es30061833"
+  verify_certs: False
+  index_name: "sglang_model_performance"

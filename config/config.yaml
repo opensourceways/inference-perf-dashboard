@@ -1,0 +1,16 @@
+es:
+  url: "http://127.0.0.1:9200"
+  username: "elastic"
+  token: "es30061833"
+  "index_name": "sglang_model_performance"
+  latency: ""
+  throughput: ""
+  serving: ""
+  latency_v1: ""
+  throughput_v1: ""
+  serving_v1: ""
+  volatility: ""
+server:
+  url: ""
+commit:
+  url: ""
