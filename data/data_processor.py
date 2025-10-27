@@ -590,10 +590,6 @@ def init_es_handler(config_path: Optional[str] = None) -> Tuple[Optional[es_oper
         print(f"配置文件错误：{str(e)}，ES 写入功能禁用")
     except KeyError as e:
         print(f"配置格式错误：{str(e)}，ES 写入功能禁用")
-    except (ConnectionError, exceptions.ConnectionError):
-        print(f"ES 连接失败：无法连接到 {es_url}，ES 写入功能禁用")
-    except (PermissionError, exceptions.AuthenticationException):
-        print(f"ES 认证失败：用户名或密码错误，ES 写入功能禁用")
     except Exception as e:
         print(f"ES 初始化异常：{str(e)}，ES 写入功能禁用")
 
