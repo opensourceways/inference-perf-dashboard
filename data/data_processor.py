@@ -537,8 +537,14 @@ def init_es_handler(config_path: Optional[str] = None) -> Tuple[Optional[es_oper
     """
     # 1. 确定配置文件路径（默认路径：当前文件目录下的 config/config.yaml）
     if not config_path:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(current_dir, "config", "es_config.yaml")
+        # 获取当前文件的绝对路径目录
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+        # 获取当前文件目录的上一级目录
+        parent_dir = os.path.dirname(current_file_dir)  # 向上一级目录
+        # 拼接默认配置路径
+        config_path = os.path.join(parent_dir, "config", "es_config.yaml")
+        # 标准化路径
+        config_path = os.path.normpath(config_path)
 
     # 2. 初始化返回值
     default_index = "sglang_model_performance"
