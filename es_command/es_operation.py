@@ -1,8 +1,11 @@
+import os
 import threading
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Tuple
 
+import yaml
 from elastic_transport import HeadApiResponse, ObjectApiResponse
 from elasticsearch import Elasticsearch, exceptions, logger
+
 
 class ESHandler:
     """Elasticsearch 操作封装类，支持索引管理、数据CRUD及安全锁机制"""
@@ -224,3 +227,70 @@ class ESHandler:
         except exceptions.RequestError as e:
             logger.error(f"批量查询失败：{e.error}（{e.info}）")
             raise  # 抛出异常由调用方处理
+
+def init_es_handler(config_path: Optional[str] = None) -> Tuple[Optional[ESHandler], str]:
+    """
+    初始化 ESHandler 实例并返回索引名
+    :param config_path: 配置文件路径（默认使用项目内 config/es_config.yaml）
+    :return: (es_handler实例, 索引名) → 初始化失败时 es_handler 为 None
+    """
+    # 1. 确定配置文件路径
+    if not config_path:
+        # 获取当前文件的绝对路径目录
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+        # 获取当前文件目录的上一级目录
+        parent_dir = os.path.dirname(current_file_dir)  # 向上一级目录
+        # 拼接默认配置路径
+        config_path = os.path.join(parent_dir, "config", "es_config.yaml")
+        # 标准化路径
+        config_path = os.path.normpath(config_path)
+
+    # 2. 初始化返回值
+    default_index = "sglang_model_performance"
+
+    try:
+        # 3. 读取配置文件
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(f"配置文件不存在：{config_path}")
+
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+            if "es" not in config:
+                raise KeyError("配置文件中缺少 'es' 节点")
+            es_config = config["es"]
+
+        # 4. 提取 ES 配置参数（带默认值，增强容错）
+        es_url = es_config.get("url")
+        es_username = es_config.get("username", "elastic")
+        es_token = es_config.get("token")
+        verify_certs = es_config.get("verify_certs", False)
+        index_name = es_config.get("index_name", default_index)
+
+        # 校验必填配置（url 和 token 不可缺失）
+        if not es_url:
+            raise KeyError("es 配置中缺少 'url' 字段")
+        if not es_token:
+            raise KeyError("es 配置中缺少 'token' 字段")
+
+        # 5. 初始化 ESHandler 实例
+        es_handler = ESHandler(
+            es_url=es_url,
+            username=es_username,
+            token=es_token,
+            verify_certs=verify_certs
+        )
+
+        # 6. 初始化成功，返回实例和索引名
+        print(f"ESHandler 初始化成功，索引名：{index_name}")
+        return es_handler, index_name
+
+    # 7. 异常处理（分类捕获，明确错误原因）
+    except FileNotFoundError as e:
+        print(f"配置文件错误：{str(e)}，ES 写入功能禁用")
+    except KeyError as e:
+        print(f"配置格式错误：{str(e)}，ES 写入功能禁用")
+    except Exception as e:
+        print(f"ES 初始化异常：{str(e)}，ES 写入功能禁用")
+
+    # 8. 初始化失败时，返回 None 和默认索引名
+    return None, default_index

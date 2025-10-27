@@ -28,32 +28,8 @@ for proxy in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
 app = Flask(__name__)
 CORS(app)
 
-# 加载配置
-with open("config/config.yaml", "r", encoding="utf-8") as f:
-    _raw_config = yaml.safe_load(f)
-
-# 配置结构化（适配你的 ES 连接信息）
-class Config:
-    es_url = _raw_config["es"]["url"]  # 如 "https://localhost:9200"
-    es_username = _raw_config["es"].get("username", "elastic")  # 默认 elastic
-    es_token = _raw_config["es"]["token"]  # ES 密码
-    index_name = _raw_config["es"].get("index_name", "sglang_model_performance")  # 你的索引名，如 "sglang_model_performance"
-
-config = Config()
-
 # 初始化 ESHandler 实例（全局复用，避免重复连接）
-try:
-    es_handler = es_operation.ESHandler(
-        es_url=config.es_url,
-        username=config.es_username,
-        password=config.es_token,
-        verify_certs=False  # 开发环境关闭证书验证
-    )
-    logger.info("ESHandler 初始化成功")
-except Exception as e:
-    logger.error(f"ESHandler 初始化失败：{str(e)}", exc_info=True)
-    # 初始化失败时应用仍启动，但接口会返回错误
-    es_handler = None
+es_handler, es_index_name = es_operation.init_es_handler()
 
 
 # ------------------------------
@@ -201,11 +177,9 @@ def get_server_commits_list():
         ]
         # 4.3 调用 ESHandler.search（复用已有实例，传递扩展参数）
         es_response = es_handler.search(
-            index_name=Config.index_name,  # 复用 Config 中的索引名
+            index_name=es_index_name,
             query=es_query,
             size=min(int(request.args.get("size", 10000)), 10000),  # 限制最大返回量
-            sort=sort_rule,
-            _source=need_fields
         )
 
         # 5. 处理 ES 响应数据（按需求格式转换）
