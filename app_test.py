@@ -31,7 +31,6 @@ CORS(app)
 # 初始化 ESHandler 实例（全局复用，避免重复连接）
 es_handler, es_index_name = es_operation.init_es_handler()
 
-
 # ------------------------------
 # 数据处理工具函数
 # ------------------------------
