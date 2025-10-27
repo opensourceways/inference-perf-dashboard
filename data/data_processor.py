@@ -11,7 +11,7 @@ import yaml
 from fastapi import exceptions
 
 from data_models import Metric, PRInfo
-from es_command.es_operation import ESHandler
+from ..es_command.es_operation import ESHandler
 
 ROOT_DIR = os.path.expanduser("~/.cache/aisbench")
 
