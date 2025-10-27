@@ -2,15 +2,15 @@ import os
 import yaml
 from elasticsearch import exceptions
 from typing import Optional, Tuple
-from es_command.es_operation import ESHandler
+from es_command import es_operation
 
-def init_es_handler(config_path: Optional[str] = None) -> Tuple[Optional[ESHandler], str]:
+def init_es_handler(config_path: Optional[str] = None) -> Tuple[Optional[es_operation.ESHandler], str]:
     """
     初始化 ESHandler 实例并返回索引名
-    :param config_path: 配置文件路径（默认使用项目内 config/config.yaml）
+    :param config_path: 配置文件路径（默认使用项目内 config/es_config.yaml）
     :return: (es_handler实例, 索引名) → 初始化失败时 es_handler 为 None
     """
-    # 1. 确定配置文件路径（默认路径：当前文件目录下的 config/config.yaml）
+    # 1. 确定配置文件路径（默认路径：当前文件目录下的 config/es_config.yaml）
     if not config_path:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         config_path = os.path.join(current_dir, "config", "es_config.yaml")
@@ -43,7 +43,7 @@ def init_es_handler(config_path: Optional[str] = None) -> Tuple[Optional[ESHandl
             raise KeyError("es 配置中缺少 'token' 字段")
 
         # 5. 初始化 ESHandler 实例
-        es_handler = ESHandler(
+        es_handler = es_operation.ESHandler(
             es_url=es_url,
             username=es_username,
             token=es_token,

@@ -11,7 +11,8 @@ import yaml
 from fastapi import exceptions
 
 from data_models import Metric, PRInfo
-from ..es_command.es_operation import ESHandler
+from es_command import es_operation
+from es_command.es_operation import ESHandler
 
 ROOT_DIR = os.path.expanduser("~/.cache/aisbench")
 
@@ -528,7 +529,7 @@ def ensure_unique_id(
         existing_ids.add(new_id)
         return True
 
-def init_es_handler(config_path: Optional[str] = None) -> Tuple[Optional[ESHandler], str]:
+def init_es_handler(config_path: Optional[str] = None) -> Tuple[Optional[es_operation.ESHandler], str]:
     """
     初始化 ESHandler 实例并返回索引名
     :param config_path: 配置文件路径（默认使用项目内 config/config.yaml）
@@ -567,7 +568,7 @@ def init_es_handler(config_path: Optional[str] = None) -> Tuple[Optional[ESHandl
             raise KeyError("es 配置中缺少 'token' 字段")
 
         # 5. 初始化 ESHandler 实例
-        es_handler = ESHandler(
+        es_handler = es_operation.ESHandler(
             es_url=es_url,
             username=es_username,
             token=es_token,
