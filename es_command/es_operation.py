@@ -5,7 +5,7 @@ from typing import Dict, Optional, Any, Tuple, List
 import yaml
 from elastic_transport import HeadApiResponse, ObjectApiResponse
 from elasticsearch import Elasticsearch, exceptions, logger
-from es_config import MetricMapping
+from es_command import es_config
 
 class ESHandler:
     """Elasticsearch 操作封装类，支持索引管理、数据CRUD及安全锁机制"""
@@ -81,7 +81,7 @@ class ESHandler:
             if not self.es.indices.exists(index=index_name):
                 print(f"索引 '{index_name}' 不存在，自动创建（使用默认映射）")
                 # 调用create_index，传入data_model的默认映射
-                if not self.create_index(index_name, mappings=MetricMapping.DEFAULT_MAPPINGS):
+                if not self.create_index(index_name, mappings=es_config.MetricMapping.DEFAULT_MAPPINGS):
                     print(f"索引 '{index_name}' 创建失败，无法添加数据")
                     return False  # 索引创建失败，直接返回
 
