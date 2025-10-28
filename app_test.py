@@ -1,19 +1,17 @@
 import logging
 import os
-import pandas as pd
 
-from typing import Dict, Optional, List
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from elasticsearch import exceptions
 from es_command import es_operation
 from api_utils import (
-    format_success,
     format_fail,
     check_input_params,
     build_es_query,
     process_es_commit_response
 )
+
 
 # 日志配置
 logging.basicConfig(
@@ -37,16 +35,19 @@ es_handler, es_index_name = es_operation.init_es_handler()
 @app.route("/health")
 def health_check():
     """健康检查接口，同时验证 ES 连接"""
-    es_status = "connected" if (es_handler and hasattr(es_handler, 'es') and es_handler.es.ping()) else "disconnected"
+    try:
+        es_connected = es_handler and hasattr(es_handler, 'es') and es_handler.es.ping()
+    except Exception:
+        es_connected = False
+    es_status = "connected" if es_connected else "disconnected"
     return jsonify({
         "status": "healthy",
         "es_status": es_status
     }), 200
 
 @app.route("/server/commits/list", methods=["GET"])
-@app.route("/server/commits/list", methods=["GET"])
 def get_server_commits_list():
-    """提交列表接口（核心逻辑：调用工具函数，无冗余代码）"""
+    """提交列表接口"""
     # 1. ES连接检查
     if not es_handler:
         err_msg = "服务异常：ES连接未就绪"
@@ -89,10 +90,7 @@ def get_server_commits_list():
         result = process_es_commit_response(es_response)
 
         # 7. 日志+返回结果
-        logger.info(
-            f"查询完成：模型数={len(result)}，总记录数={sum(len(v) for v in result.values())}，"
-            f"条件：models={params['models']}, engineVersion={params['engineVersion']}"
-        )
+        logger.info(f"查询完成：模型数={len(result)}")
         return jsonify(result)
 
     # 8. 异常处理（分类捕获）

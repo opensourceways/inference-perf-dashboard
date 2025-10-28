@@ -2,19 +2,9 @@ import logging
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Any
 from elastic_transport import ObjectApiResponse
-from elasticsearch import exceptions
 
 logger = logging.getLogger(__name__)
 ES_MAX_RESULT_SIZE = 10000
-
-
-def format_success(data: Dict) -> Dict:
-    """成功响应格式"""
-    return {
-        "success": True,
-        "data": data,
-        "message": "查询成功"
-    }
 
 
 def format_fail(message: str) -> Dict:
@@ -25,7 +15,6 @@ def format_fail(message: str) -> Dict:
         "message": message
     }
 
-# ------------------------------
 def check_input_params(params: Dict) -> Tuple[bool, str, Optional[Dict]]:
     """
     校验接口参数
@@ -112,7 +101,7 @@ def process_es_commit_response(es_response: ObjectApiResponse[Any]) -> Dict[str,
         source = hit.get("_source", {}).get("source", {})
         required_fields = ["model_name", "sglang_branch", "device", "commit_id", "created_at"]
         if not all(f in source for f in required_fields):
-            logger.debug(f"跳过字段缺失的记录：{source}")
+            logger.warning(f"跳过字段缺失的记录：{source}")
             continue
         valid_records.append(source)
 
@@ -146,14 +135,3 @@ def process_es_commit_response(es_response: ObjectApiResponse[Any]) -> Dict[str,
             result[model].append(item)
 
     return result
-
-
-# ------------------------------
-# 5. ES健康检查（复用）
-# ------------------------------
-def check_es_health(es_handler) -> str:
-    """检查ES连接状态"""
-    try:
-        return "connected" if (es_handler and hasattr(es_handler, "es") and es_handler.es.ping()) else "disconnected"
-    except exceptions.ElasticsearchException:
-        return "disconnected"
