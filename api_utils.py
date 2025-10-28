@@ -1,17 +1,13 @@
 import logging
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Any
-
 from elastic_transport import ObjectApiResponse
 from elasticsearch import exceptions
-from flask import Config
 
 logger = logging.getLogger(__name__)
 ES_MAX_RESULT_SIZE = 10000
 
-# ------------------------------
-# 1. 响应格式化（统一格式）
-# ------------------------------
+
 def format_success(data: Dict) -> Dict:
     """成功响应格式"""
     return {
@@ -29,13 +25,10 @@ def format_fail(message: str) -> Dict:
         "message": message
     }
 
-
 # ------------------------------
-# 2. 参数校验（复用性强）
-# ------------------------------
-def validate_commit_list_params(params: Dict) -> Tuple[bool, str, Optional[Dict]]:
+def check_input_params(params: Dict) -> Tuple[bool, str, Optional[Dict]]:
     """
-    校验 /server/commits/list 接口参数
+    校验接口参数
     :return: (校验结果, 错误信息, 处理后参数)
     """
     # 1. 检查必填参数
@@ -67,10 +60,6 @@ def validate_commit_list_params(params: Dict) -> Tuple[bool, str, Optional[Dict]
 
     return True, "", processed_params
 
-
-# ------------------------------
-# 3. ES查询构建（适配数据结构）
-# ------------------------------
 def build_es_query(
     model_name: Optional[str] = None,
     engine_version: Optional[str] = None,
@@ -111,10 +100,6 @@ def build_es_query(
     # 若没有筛选条件，默认匹配所有
     return query if query["bool"]["must"] else {"match_all": {}}
 
-
-# ------------------------------
-# 4. ES响应处理（数据清洗+格式转换）
-# ------------------------------
 def process_es_commit_response(es_response: ObjectApiResponse[Any]) -> Dict[str, List[Dict]]:
     """
     处理ES提交列表响应，转换为「模型名→记录列表」格式
