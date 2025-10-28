@@ -75,7 +75,7 @@ def get_server_commits_list():
         model_name = None if params["models"] == "all" else params["models"]
         es_query = build_es_query(
             model_name=model_name,
-            engine_version=str(params["engineVersion"]),
+            # engine_version=str(params["engineVersion"]),
             start_time=params["startTime"],
             end_time=params["endTime"]
         )
