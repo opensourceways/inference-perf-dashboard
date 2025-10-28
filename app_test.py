@@ -49,56 +49,53 @@ def health_check():
 @app.route("/server/commits/list", methods=["GET"])
 def get_server_commits_list():
     """提交列表接口"""
-    # 1. ES连接检查
+    #  ES连接检查
     if not es_handler:
         err_msg = "服务异常：ES连接未就绪"
         logger.error(err_msg)
         return jsonify(format_fail(err_msg)), 500
 
     try:
-        # 2. 提取原始参数
+        # 提取原始参数
         raw_params = {
             "startTime": request.args.get("startTime", type=int),
             "endTime": request.args.get("endTime", type=int),
             "models": request.args.get("models", type=str),
-            "engineVersion": request.args.get("engineVersion", type=int),
+            "engineVersion": request.args.get("engineVersion", default=0, type=str),
             "size": request.args.get("size", type=int)
         }
 
-        # 3. 参数校验（调用工具函数）
+        # 参数校验
         valid, err_msg, params = check_input_params(raw_params)
         if not valid:
             logger.warning(err_msg)
             return jsonify(format_fail(err_msg)), 400
 
-        # 4. 构建ES查询（调用工具函数）
-        print("+++++++++++++++4. 构建ES查询（调用工具函数）++++++++++++++++++")
+        # 构建ES查询
         model_name = None if params["models"] == "all" else params["models"]
         es_query = build_es_query(
             model_name=model_name,
-            # engine_version=str(params["engineVersion"]),
+            engine_version=str(params["engineVersion"]),
             start_time=params["startTime"],
             end_time=params["endTime"]
         )
 
-        # 5. 执行ES查询（新增排序：按创建时间降序，确保最新记录在前）
-        print("+++++++++++++++5. 执行ES查询（新增排序：按创建时间降序，确保最新记录在前）++++++++++++++++++")
+        # 执行ES查询
         es_response = es_handler.search(
             index_name=es_index_name,
             query=es_query,
             size=params["size"],
-            # sort=[{"source.created_at": {"order": "desc"}}]  # 按时间降序
+            sort=[{"source.created_at": {"order": "desc"}}]  # 按时间降序
         )
 
-        # 6. 处理响应数据（调用工具函数）
-        print("+++++++++++++++6. 处理响应数据（调用工具函数）++++++++++++++++++")
+        # 处理响应数据
         result = process_es_commit_response(es_response)
 
-        # 7. 日志+返回结果
+        # 日志+返回结果
         logger.info(f"查询完成：模型数={len(result)}，总记录数={sum(len(v) for v in result.values())}")
         return jsonify(result)
 
-    # 8. 异常处理（分类捕获）
+    # 异常处理（分类捕获）
     except ValueError as e:
         err_msg = f"参数错误：{str(e)}"
         logger.error(err_msg)

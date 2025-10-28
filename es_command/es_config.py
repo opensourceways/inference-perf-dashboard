@@ -11,6 +11,8 @@ class MetricMapping:
                 "properties": {
                     "pr_id": {"type": "keyword"},
                     "status": {"type": "keyword"},
+                    "tp": {"type": "integer"},
+                    "engine_version": {"type": "keyword"},
                     "commit_id": {"type": "keyword"},
                     "commit_title": {"type": "text"},
                     "created_at": {"type": "date", "format": "yyyy-MM-dd'T'HH:mm:ss"},

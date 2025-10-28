@@ -9,6 +9,8 @@ class Metric:
     model_name: str
     device: str
     status: str
+    tp: int
+    engine_version: str
     request_rate: float
     mean_e2el_ms: float  # 平均端到端延迟（ms）
     mean_ttft_ms: float  # 平均首token生成时间（ms）

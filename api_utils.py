@@ -21,31 +21,30 @@ def check_input_params(params: Dict) -> Tuple[bool, str, Optional[Dict]]:
     校验接口参数
     :return: (校验结果, 错误信息, 处理后参数)
     """
-    # 1. 检查必填参数
-    # required_keys = ["startTime", "endTime", "models", "engineVersion"]
-    required_keys = ["startTime", "endTime", "models"]
+    # 检查必填参数
+    required_keys = ["startTime", "endTime", "models", "engineVersion"]
     missing = [k for k in required_keys if k not in params or params[k] is None]
     if missing:
         return False, f"缺失必填参数：{','.join(missing)}", None
 
-    # 2. 处理并校验参数
+    # 处理并校验参数
     processed_params = {
         "startTime": params["startTime"],
         "endTime": params["endTime"],
         "models": params["models"].strip(),
-        # "engineVersion": params["engineVersion"],
+        "engineVersion": params["engineVersion"],
         "size": ES_MAX_RESULT_SIZE if params["size"] is None else params["size"]
     }
 
-    # 3. 校验 engineVersion（仅0/1/2）
-    # if processed_params["engineVersion"] not in [0, 1, 2]:
-    #     return False, f"engineVersion无效：{processed_params['engineVersion']}，仅支持0/1/2", None
+    # 校验 engineVersion（仅0/1/2）
+    if processed_params["engineVersion"] not in [0, 1, 2]:
+        return False, f"engineVersion无效：{processed_params['engineVersion']}，仅支持0/1/2", None
 
-    # 4. 校验时间范围
+    # 校验时间范围
     if processed_params["startTime"] > processed_params["endTime"]:
         return False, f"时间范围无效：startTime > endTime", None
 
-    # 5. 校验models非空
+    # 校验models非空
     if not processed_params["models"]:
         return False, "models参数不可为空", None
 
@@ -70,10 +69,10 @@ def build_es_query(
         })
 
     # 按source.engine_version筛选
-    # if engine_version:
-    #     query["bool"]["must"].append({
-    #         "term": {"source.engine_version": engine_version}
-    #     })
+    if engine_version:
+        query["bool"]["must"].append({
+            "term": {"source.engine_version": engine_version}
+        })
 
     # 按时间范围筛选（source.created_at）
     if start_time or end_time:
@@ -98,7 +97,7 @@ def process_es_commit_response(es_response: ObjectApiResponse[Any]) -> Dict[str,
     """
     处理ES提交列表响应，转换为「模型名→记录列表」格式
     """
-    # 1. 提取有效记录（过滤字段缺失的数据）
+    # 提取有效记录（过滤字段缺失的数据）
     valid_records: List[Dict] = []
     for hit in es_response.get("hits", {}).get("hits", []):
         source = hit.get("_source", {}).get("source", {})
@@ -108,7 +107,7 @@ def process_es_commit_response(es_response: ObjectApiResponse[Any]) -> Dict[str,
             continue
         valid_records.append(source)
 
-    # 2. 转换时间格式+重命名字段
+    # 转换时间格式+重命名字段
     processed: List[Dict] = []
     for record in valid_records:
         try:
@@ -128,7 +127,7 @@ def process_es_commit_response(es_response: ObjectApiResponse[Any]) -> Dict[str,
             logger.warning(f"时间格式错误（{record['created_at']}）：{str(e)}")
             continue
 
-    # 3. 按模型分组+去重
+    # 按模型分组+去重
     result: Dict[str, List[Dict]] = {}
     seen_pairs: Dict[str, set] = {}  # 存储每个模型下已出现的 (hash, time) 对：{model: {(hash1, time1), (hash2, time2), ...}}
 
