@@ -150,3 +150,94 @@ def process_es_commit_response(es_response: ObjectApiResponse[Any]) -> Dict[str,
             })
 
     return result
+
+
+def map_es_to_response(es_source: Dict) -> Dict:
+    """
+    :param es_source: ES查询返回的「_source.source」字典（需包含device、model_name、mean_e2el_ms等字段）
+    :type es_source: Dict
+    :return: 符合「/server/data-detail-compare/list」接口文档的响应字典
+    :rtype: Dict
+    """
+    # 防御性处理：若es_source为空，返回空字典（避免后续取值报错）
+    if not isinstance(es_source, Dict):
+        return {}
+
+    # 字段映射：严格对齐接口文档，调用专用辅助函数处理格式化逻辑
+    return {
+        "device": es_source.get("device"),
+        "latency_s": _format_latency(
+            mean_e2el=es_source.get("mean_e2el_ms"),
+            median_e2el=es_source.get("median_e2el_ms")
+        ),
+        "mean_itl_ms": es_source.get("mean_itl_ms"),
+        "mean_tpot_ms": es_source.get("mean_tpot_ms"),
+        "mean_ttft_ms": es_source.get("mean_ttft_ms"),
+        "name": es_source.get("model_name"),
+        "p99_itl_ms": es_source.get("p99_itl_ms"),
+        "p99_tpot_ms": es_source.get("p99_tpot_ms"),
+        "p99_ttft_ms": es_source.get("p99_ttft_ms"),
+        "request_rate": es_source.get("request_rate"),
+        "requests_req_s": _format_throughput(
+            value=es_source.get("request_throughput")
+        ),
+        "serve_output_throughput_tok_s": es_source.get("output_token_throughput"),
+        "serve_request_throughput_req_s": es_source.get("request_throughput"),
+        "serve_total_throughput_tok_s": es_source.get("total_token_throughput"),
+        "tensor_parallel": es_source.get("tp"),
+        "tokens_tok_s": _format_throughput(  # 复用吞吐量格式化逻辑（与requests_req_s逻辑一致）
+            value=es_source.get("total_token_throughput")
+        )
+    }
+
+
+def _format_latency(mean_e2el: Optional[float], median_e2el: Optional[float]) -> str:
+    """
+    :param mean_e2el: ES中的平均端到端延迟（毫秒），可能为None或非数字
+    :type mean_e2el: Optional[float]
+    :param median_e2el: ES中的中位数端到端延迟（毫秒），可能为None或非数字
+    :type median_e2el: Optional[float]
+    :return: 格式化后的延迟字符串（保留2位小数，空值/非数字按0.00处理）
+    :rtype: str
+    """
+
+    # 处理空值/非数字：转为0.0（避免除法报错）
+    def safe_convert(val: Optional[float]) -> float:
+        return val / 1000 if (isinstance(val, (int, float)) and val is not None) else 0.0
+
+    # 毫秒转秒 + 保留2位小数 + 拼接「→」格式
+    mean_s = safe_convert(mean_e2el)
+    median_s = safe_convert(median_e2el)
+    return f"{mean_s:.2f}→{median_s:.2f}"
+
+
+def _format_throughput(value: Optional[float]) -> str:
+    """
+    :param value: ES中的吞吐量数值（如请求吞吐量、令牌吞吐量），可能为None或非数字
+    :type value: Optional[float]
+    :return: 格式化后的吞吐量字符串（保留2位小数，空值/非数字按0.00处理）
+    :rtype: str
+    """
+    # 处理空值/非数字：转为0.0
+    safe_val = value if (isinstance(value, (int, float)) and value is not None) else 0.0
+    # 按接口要求格式返回（当前为「值→值」，后续可扩展对比逻辑）
+    return f"{safe_val:.2f}→{safe_val:.2f}"
+
+
+def process_es_model_response(es_response: ObjectApiResponse[Any]) -> List[Dict]:
+    """
+    :param es_response: ES查询的原始响应（需包含hits.hits字段）
+    :type es_response: ObjectApiResponse[Any]
+    :return: 批量映射后的模型列表（无数据时返回空列表）
+    :rtype: List[Dict]
+    """
+    # 提取ES响应中的hits数据（防御性处理：避免字段不存在导致KeyError）
+    es_hits = es_response.get("hits", {}).get("hits", [])
+    if not es_hits:
+        return []
+
+    # 批量调用映射函数，处理每条ES数据
+    return [
+        map_es_to_response(hit.get("_source", {}).get("source", {}))
+        for hit in es_hits
+    ]
