@@ -1,5 +1,5 @@
 from collections import defaultdict
-
+import argparse
 import pandas as pd
 import json
 import os
@@ -674,9 +674,21 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Any]]
     print(f"=== 整体处理完成！共生成 {len(all_valid_metrics)} 个有效模型数据 ===")
     return all_valid_metrics if all_valid_metrics else []
 
-
 # ---------------------- 函数调用（主入口） ----------------------
 if __name__ == "__main__":
-    # 可指定目标日期，如 generate_metrics_data("20251023")
-    generate_metrics_data(target_date="20251022")
+    # 创建参数解析器
+    parser = argparse.ArgumentParser(description="传入目标日期（格式：YYYYMMDD）")
+
+    # 添加 target_date 参数：
+    parser.add_argument(
+        "target_date",  # 参数名（命令行传参时直接跟值，不用加前缀）
+        nargs="?",  # 允许参数可选（没传时用默认值）
+        default="20251022",
+        help="目标日期，格式为 YYYYMMDD（例如 20251023，默认：20251022）"
+    )
+
+    args = parser.parse_args()
+
+    # 调用函数时，使用解析后的参数（args.target_date）
+    generate_metrics_data(target_date=args.target_date)
 
