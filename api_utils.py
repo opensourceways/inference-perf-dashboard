@@ -33,7 +33,7 @@ def check_input_params(params: Dict) -> Tuple[bool, str, Optional[Dict]]:
         "endTime": params["endTime"],
         "models": params["models"].strip(),
         "engineVersion": params["engineVersion"],
-        "size": min(params.get("size", 10000), ES_MAX_RESULT_SIZE)  # 限制最大条数
+        "size": ES_MAX_RESULT_SIZE if params["size"] is None else params["size"]
     }
 
     # 3. 校验 engineVersion（仅0/1/2）
