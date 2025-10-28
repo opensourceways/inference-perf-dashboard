@@ -236,6 +236,7 @@ def process_es_model_response(es_response: ObjectApiResponse[Any]) -> List[Dict]
     if not es_hits:
         return []
 
+    print(f"********es_hits is {es_hits}********")
     # 批量调用映射函数，处理每条ES数据
     return [
         map_es_to_response(hit.get("_source", {}).get("source", {}))
