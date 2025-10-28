@@ -8,7 +8,7 @@ from elasticsearch import Elasticsearch, exceptions, logger
 from es_command import es_config
 
 class ESHandler:
-    """Elasticsearch 操作封装类，支持索引管理、数据CRUD及安全锁机制"""
+    """Elasticsearch 操作封装类，支持数据CRUD及安全锁机制"""
     def __init__(self, es_url: str, username: str, token: str, verify_certs: bool = False):
         """
         初始化ES连接
