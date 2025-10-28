@@ -45,6 +45,7 @@ def health_check():
         "es_status": es_status
     }), 200
 
+
 @app.route("/server/commits/list", methods=["GET"])
 def get_server_commits_list():
     """提交列表接口"""
@@ -79,18 +80,19 @@ def get_server_commits_list():
             end_time=params["endTime"]
         )
 
-        # 5. 执行ES查询
+        # 5. 执行ES查询（新增排序：按创建时间降序，确保最新记录在前）
         es_response = es_handler.search(
             index_name=es_index_name,
             query=es_query,
             size=params["size"],
+            sort=[{"source.created_at": {"order": "desc"}}]  # 按时间降序
         )
 
         # 6. 处理响应数据（调用工具函数）
         result = process_es_commit_response(es_response)
 
         # 7. 日志+返回结果
-        logger.info(f"查询完成：模型数={len(result)}")
+        logger.info(f"查询完成：模型数={len(result)}，总记录数={sum(len(v) for v in result.values())}")
         return jsonify(result)
 
     # 8. 异常处理（分类捕获）
@@ -100,6 +102,10 @@ def get_server_commits_list():
         return jsonify(format_fail(err_msg)), 400
     except exceptions.RequestError as e:
         err_msg = f"ES查询失败：{e.error}（详情：{e.info.get('error', {}).get('reason', '')}）"
+        logger.error(err_msg, exc_info=True)
+        return jsonify(format_fail(err_msg)), 500
+    except exceptions.ConnectionError:
+        err_msg = "ES连接失败：无法连接到ES服务（检查网络或服务状态）"
         logger.error(err_msg, exc_info=True)
         return jsonify(format_fail(err_msg)), 500
     except Exception as e:

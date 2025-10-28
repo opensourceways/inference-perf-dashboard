@@ -15,6 +15,7 @@ def format_fail(message: str) -> Dict:
         "message": message
     }
 
+
 def check_input_params(params: Dict) -> Tuple[bool, str, Optional[Dict]]:
     """
     校验接口参数
@@ -49,6 +50,7 @@ def check_input_params(params: Dict) -> Tuple[bool, str, Optional[Dict]]:
 
     return True, "", processed_params
 
+
 def build_es_query(
     model_name: Optional[str] = None,
     engine_version: Optional[str] = None,
@@ -56,20 +58,20 @@ def build_es_query(
     end_time: Optional[int] = None
 ) -> Dict:
     """
-    构建 ES 查询条件（基于你的数据结构，支持多条件筛选），数据中时间是字符串格式（"2025-10-22T15:20:00"），需转换为时间戳范围查询
+    构建 ES 查询条件（基于数据结构，支持多条件筛选）
     """
     query = {"bool": {"must": []}}  # bool 查询，支持多条件组合
 
-    # 按模型名筛选（source.model_name）
+    # 按模型名筛选
     if model_name:
         query["bool"]["must"].append({
-            "match": {"source.model_name": model_name}
+            "term": {"source.model_name": model_name}
         })
 
     # 按source.engine_version筛选
     if engine_version:
         query["bool"]["must"].append({
-            "match": {"source.engine_version": engine_version}
+            "term": {"source.engine_version": engine_version}
         })
 
     # 按时间范围筛选（source.created_at）
@@ -89,11 +91,10 @@ def build_es_query(
     # 若没有筛选条件，默认匹配所有
     return query if query["bool"]["must"] else {"match_all": {}}
 
+
 def process_es_commit_response(es_response: ObjectApiResponse[Any]) -> Dict[str, List[Dict]]:
     """
     处理ES提交列表响应，转换为「模型名→记录列表」格式
-    :param es_response: ES查询原始响应
-    :return: 按模型分组的结果
     """
     # 1. 提取有效记录（过滤字段缺失的数据）
     valid_records: List[Dict] = []
@@ -101,7 +102,7 @@ def process_es_commit_response(es_response: ObjectApiResponse[Any]) -> Dict[str,
         source = hit.get("_source", {}).get("source", {})
         required_fields = ["model_name", "sglang_branch", "device", "commit_id", "created_at"]
         if not all(f in source for f in required_fields):
-            logger.warning(f"跳过字段缺失的记录：{source}")
+            logger.warning(f"跳过字段缺失的记录（缺少必要字段）：{source}")
             continue
         valid_records.append(source)
 
@@ -109,8 +110,10 @@ def process_es_commit_response(es_response: ObjectApiResponse[Any]) -> Dict[str,
     processed: List[Dict] = []
     for record in valid_records:
         try:
-            # 字符串时间→秒级时间戳
-            created_at_dt = pd.to_datetime(record["created_at"], format="%Y-%m-%dT%H:%M:%S")
+            created_at_dt = pd.to_datetime(record["created_at"], errors="coerce")
+            if pd.isna(created_at_dt):
+                raise ValueError("无法解析时间格式")
+            # 转换为秒级时间戳
             time_stamp = int((created_at_dt - pd.Timestamp("1970-01-01")) // pd.Timedelta("1s"))
             processed.append({
                 "model_name": record["model_name"],
@@ -125,13 +128,24 @@ def process_es_commit_response(es_response: ObjectApiResponse[Any]) -> Dict[str,
 
     # 3. 按模型分组+去重
     result: Dict[str, List[Dict]] = {}
+    seen_pairs: Dict[str, set] = {}  # 存储每个模型下已出现的 (hash, time) 对：{model: {(hash1, time1), (hash2, time2), ...}}
+
     for item in processed:
-        model = item.pop("model_name")  # 移除临时模型名
-        # 初始化分组
+        model = item["model_name"]
+        # 初始化模型分组和去重集合
         if model not in result:
             result[model] = []
-        # 去重：避免同一模型下相同hash+time的记录
-        if not any(r["hash"] == item["hash"] and r["time"] == item["time"] for r in result[model]):
-            result[model].append(item)
+            seen_pairs[model] = set()
+        # 生成去重标识（hash+time的元组）
+        pair = (item["hash"], item["time"])
+        # 若未出现过，则添加到结果
+        if pair not in seen_pairs[model]:
+            seen_pairs[model].add(pair)
+            result[model].append({
+                "branch": item["branch"],
+                "device": item["device"],
+                "hash": item["hash"],
+                "time": item["time"]
+            })
 
     return result

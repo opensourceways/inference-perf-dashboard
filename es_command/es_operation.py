@@ -1,6 +1,6 @@
 import os
 import threading
-from typing import Dict, Optional, Any, Tuple
+from typing import Dict, Optional, Any, Tuple, List
 
 import yaml
 from elastic_transport import HeadApiResponse, ObjectApiResponse
@@ -210,19 +210,27 @@ class ESHandler:
             print(f"查询数据失败：{e.error}")
             return None
 
-    def search(self, index_name: str, query: Dict, size: int = 10000) -> ObjectApiResponse[Any]:
+    def search(
+            self,
+            index_name: str,
+            query: Dict,
+            size: int = 10000,
+            sort: Optional[List[Dict]] = None
+    ) -> ObjectApiResponse[Any]:
         """
         执行批量查询（支持条件筛选）
         :param index_name: 索引名称
         :param query: 查询条件（ES 语法）
         :param size: 返回数量
+        :param sort: 排序条件（可选，格式：[{"字段名": {"order": "desc/asc"}}]）
         :return: ES 原始响应
         """
         try:
             return self.es.search(
                 index=index_name,
                 query=query,
-                size=size
+                size=size,
+                sort=sort
             )
         except exceptions.RequestError as e:
             logger.error(f"批量查询失败：{e.error}（{e.info}）")
