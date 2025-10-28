@@ -4,15 +4,11 @@ import pandas as pd
 import json
 import os
 from datetime import datetime
-from typing import Dict, Any, List, Tuple, DefaultDict, Optional
+from typing import Dict, Any, List, Tuple, DefaultDict
 from dataclasses import asdict
-
-import yaml
-from fastapi import exceptions
 
 from data_models import Metric, PRInfo
 from es_command import es_operation
-from es_command.es_operation import ESHandler
 
 ROOT_DIR = os.path.expanduser("~/.cache/aisbench")
 
@@ -221,6 +217,8 @@ def create_metrics_data(
 
     json_metrics["model_name"] = model_name
     json_metrics["device"] = "Ascend910B3"
+    json_metrics["status"] = "normal"
+    json_metrics["request_rate"] = 10
 
     # 合并指标（生成 Metric 对象后转为字典，确保字段完整）
     full_metrics_dict = merge_metrics(csv_metrics, json_metrics)
@@ -675,7 +673,6 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Any]]
     # 最终返回所有有效模型数据（确保非空）
     print(f"=== 整体处理完成！共生成 {len(all_valid_metrics)} 个有效模型数据 ===")
     return all_valid_metrics if all_valid_metrics else []
-
 
 
 # ---------------------- 函数调用（主入口） ----------------------

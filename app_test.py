@@ -72,6 +72,7 @@ def get_server_commits_list():
             return jsonify(format_fail(err_msg)), 400
 
         # 4. 构建ES查询（调用工具函数）
+        print("+++++++++++++++4. 构建ES查询（调用工具函数）++++++++++++++++++")
         model_name = None if params["models"] == "all" else params["models"]
         es_query = build_es_query(
             model_name=model_name,
@@ -81,6 +82,7 @@ def get_server_commits_list():
         )
 
         # 5. 执行ES查询（新增排序：按创建时间降序，确保最新记录在前）
+        print("+++++++++++++++5. 执行ES查询（新增排序：按创建时间降序，确保最新记录在前）++++++++++++++++++")
         es_response = es_handler.search(
             index_name=es_index_name,
             query=es_query,
@@ -89,6 +91,7 @@ def get_server_commits_list():
         )
 
         # 6. 处理响应数据（调用工具函数）
+        print("+++++++++++++++6. 处理响应数据（调用工具函数）++++++++++++++++++")
         result = process_es_commit_response(es_response)
 
         # 7. 日志+返回结果
