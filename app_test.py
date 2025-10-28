@@ -85,7 +85,7 @@ def get_server_commits_list():
             index_name=es_index_name,
             query=es_query,
             size=params["size"],
-            sort=[{"source.created_at": {"order": "desc"}}]  # 按时间降序
+            # sort=[{"source.created_at": {"order": "desc"}}]  # 按时间降序
         )
 
         # 处理响应数据
