@@ -5,50 +5,10 @@ from typing import Dict, Optional, Any, Tuple, List
 import yaml
 from elastic_transport import HeadApiResponse, ObjectApiResponse
 from elasticsearch import Elasticsearch, exceptions, logger
-
+from es_config import MetricMapping
 
 class ESHandler:
     """Elasticsearch 操作封装类，支持索引管理、数据CRUD及安全锁机制"""
-
-    # 默认映射（适配模型性能数据结构）
-    DEFAULT_MAPPINGS = {
-        "properties": {
-            "ID": {"type": "keyword"},
-            "source": {
-                "properties": {
-                    "pr_id": {"type": "keyword"},
-                    "status": {"type": "keyword"},
-                    "commit_id": {"type": "keyword"},
-                    "commit_title": {"type": "text"},
-                    "created_at": {"type": "date", "format": "yyyy-MM-dd'T'HH:mm:ss"},
-                    "sglang_branch": {"type": "keyword"},
-                    "model_name": {"type": "keyword"},
-                    "device": {"type": "keyword"},
-                    "request_rate": {"type": "float"},
-                    "mean_e2e1_ms": {"type": "float"},
-                    "mean_ttft_ms": {"type": "float"},
-                    "mean_tpot_ms": {"type": "float"},
-                    "mean_itl_ms": {"type": "float"},
-                    "p99_e2e1_ms": {"type": "float"},
-                    "p99_ttft_ms": {"type": "float"},
-                    "p99_tpot_ms": {"type": "float"},
-                    "p99_itl_ms": {"type": "float"},
-                    "median_e2e1_ms": {"type": "float"},
-                    "median_ttft_ms": {"type": "float"},
-                    "median_tpot_ms": {"type": "float"},
-                    "median_itl_ms": {"type": "float"},
-                    "max_concurrency": {"type": "integer"},
-                    "request_throughput": {"type": "float"},
-                    "total_input_tokens": {"type": "integer"},
-                    "total_generated_tokens": {"type": "integer"},
-                    "input_token_throughput": {"type": "float"},
-                    "output_token_throughput": {"type": "float"},
-                    "total_token_throughput": {"type": "float"}
-                }
-            }
-        }
-    }
-
     def __init__(self, es_url: str, username: str, token: str, verify_certs: bool = False):
         """
         初始化ES连接
@@ -64,15 +24,6 @@ class ESHandler:
         )
         self.lock = threading.Lock()  # 线程锁，保证添加/修改/删除的原子性
         self._check_connection()  # 验证连接是否成功
-
-    @classmethod
-    def update_default_mappings(cls, new_mappings: Dict) -> None:
-        """
-        类方法：更新默认映射（会影响所有实例的默认映射）
-        :param new_mappings: 新的默认映射（完整结构）
-        """
-        cls.DEFAULT_MAPPINGS = new_mappings
-        print("默认映射已更新")
 
     def _check_connection(self) -> None:
         """检查ES连接是否正常"""
@@ -95,9 +46,6 @@ class ESHandler:
             print(f"索引 '{index_name}' 已存在，无需重复创建")
             return False
 
-
-        # 使用自定义映射（若提供），否则用默认映射
-        mappings = mappings or self.DEFAULT_MAPPINGS
         try:
             self.es.indices.create(index=index_name, mappings=mappings)
             print(f"索引 '{index_name}' 创建成功")
@@ -122,15 +70,26 @@ class ESHandler:
     def add_data(self, index_name: str, doc_id: str, data: Dict) -> bool:
         """
         添加数据（带锁，防止并发写入冲突）
+        新增逻辑：索引不存在则先创建（用默认映射），再插入数据
         :param index_name: 索引名称
         :param doc_id: 文档ID（需唯一）
         :param data: 要写入的数据（JSON格式）
         :return: 成功返回True，失败返回False
         """
-        with self.lock:  # 加锁保证原子性
+        with self.lock:  # 加锁保证原子性（索引创建+数据插入同锁内，避免并发问题）
+            # 检查索引是否存在，不存在则用默认映射创建
+            if not self.es.indices.exists(index=index_name):
+                print(f"索引 '{index_name}' 不存在，自动创建（使用默认映射）")
+                # 调用create_index，传入data_model的默认映射
+                if not self.create_index(index_name, mappings=MetricMapping.DEFAULT_MAPPINGS):
+                    print(f"索引 '{index_name}' 创建失败，无法添加数据")
+                    return False  # 索引创建失败，直接返回
+
+            # 检查文档ID是否存在
             if self.check_id_exists(index_name, doc_id):
                 print(f"文档ID '{doc_id}' 已存在，无法重复添加")
                 return False
+
             try:
                 response = self.es.index(index=index_name, id=doc_id, document=data)
                 if response["result"] == "created":
