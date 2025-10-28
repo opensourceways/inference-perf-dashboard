@@ -90,6 +90,7 @@ def build_es_query(
         })
 
     # 若没有筛选条件，默认匹配所有
+    print(f"*****query is {query}**********************")
     return query if query["bool"]["must"] else {"match_all": {}}
 
 

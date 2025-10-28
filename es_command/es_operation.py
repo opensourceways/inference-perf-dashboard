@@ -195,7 +195,7 @@ class ESHandler:
             )
         except exceptions.RequestError as e:
             logger.error(f"批量查询失败：{e.error}（{e.info}）")
-            raise  # 抛出异常由调用方处理
+            raise
 
 def init_es_handler(config_path: Optional[str] = None) -> Tuple[Optional[ESHandler], str]:
     """
