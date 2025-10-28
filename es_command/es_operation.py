@@ -19,7 +19,7 @@ class ESHandler:
                     "pr_id": {"type": "keyword"},
                     "commit_id": {"type": "keyword"},
                     "commit_title": {"type": "text"},
-                    "created_at": {"type": "text"},
+                    "created_at": {"type": "date", "format": "yyyy-MM-dd'T'HH:mm:ss"},
                     "sglang_branch": {"type": "keyword"},
                     "model_name": {"type": "keyword"},
                     "device": {"type": "keyword"},
