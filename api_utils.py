@@ -22,7 +22,8 @@ def check_input_params(params: Dict) -> Tuple[bool, str, Optional[Dict]]:
     :return: (校验结果, 错误信息, 处理后参数)
     """
     # 1. 检查必填参数
-    required_keys = ["startTime", "endTime", "models", "engineVersion"]
+    # required_keys = ["startTime", "endTime", "models", "engineVersion"]
+    required_keys = ["startTime", "endTime", "models"]
     missing = [k for k in required_keys if k not in params or params[k] is None]
     if missing:
         return False, f"缺失必填参数：{','.join(missing)}", None
@@ -32,13 +33,13 @@ def check_input_params(params: Dict) -> Tuple[bool, str, Optional[Dict]]:
         "startTime": params["startTime"],
         "endTime": params["endTime"],
         "models": params["models"].strip(),
-        "engineVersion": params["engineVersion"],
+        # "engineVersion": params["engineVersion"],
         "size": ES_MAX_RESULT_SIZE if params["size"] is None else params["size"]
     }
 
     # 3. 校验 engineVersion（仅0/1/2）
-    if processed_params["engineVersion"] not in [0, 1, 2]:
-        return False, f"engineVersion无效：{processed_params['engineVersion']}，仅支持0/1/2", None
+    # if processed_params["engineVersion"] not in [0, 1, 2]:
+    #     return False, f"engineVersion无效：{processed_params['engineVersion']}，仅支持0/1/2", None
 
     # 4. 校验时间范围
     if processed_params["startTime"] > processed_params["endTime"]:
@@ -69,10 +70,10 @@ def build_es_query(
         })
 
     # 按source.engine_version筛选
-    if engine_version:
-        query["bool"]["must"].append({
-            "term": {"source.engine_version": engine_version}
-        })
+    # if engine_version:
+    #     query["bool"]["must"].append({
+    #         "term": {"source.engine_version": engine_version}
+    #     })
 
     # 按时间范围筛选（source.created_at）
     if start_time or end_time:
