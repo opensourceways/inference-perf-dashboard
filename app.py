@@ -36,13 +36,12 @@ es_handler, es_index_name = es_operation.init_es_handler()
 
 def es_api_handler(
     # 差异化逻辑：由具体接口传入
-    adjust_params: Callable[[Dict], Dict],  # 调整参数（如处理model_name为None）
-    process_response: Callable[[Any], Any],  # 响应处理（如process_es_commit_response）
-    format_log: Callable[[Dict, Any], str]   # 日志格式化（生成接口专属日志）
+    adjust_params: Callable[[Dict], Dict],  # 调整参数
+    process_response: Callable[[Any], Any],  # 响应处理
+    format_log: Callable[[Dict, Any], str]   # 日志格式化
 ) -> Callable[[], Response]:
     """
-    高阶函数：封装ES接口的公共流程，返回具体接口函数
-    公共流程：ES连接检查 → 提取参数 → 参数校验 → 调整参数 → 构建查询 → 执行查询 → 处理响应 → 日志 → 返回结果
+    封装ES接口的公共流程，返回具体接口函数 ES连接检查 → 提取参数 → 参数校验 → 调整参数 → 构建查询 → 执行查询 → 处理响应 → 日志 → 返回结果
     """
     def api_func() -> tuple[Response, int] | Response:
         # ES连接检查
@@ -52,7 +51,7 @@ def es_api_handler(
             return jsonify(format_fail(err_msg)), 500
 
         try:
-            # 提取原始参数 统一提取3个接口的公共参数，差异部分后续由adjust_params处理
+            # 提取原始参数 统一提取接口的公共参数，差异部分由adjust_params处理
             raw_params = {
                 "startTime": request.args.get("startTime", type=int),
                 "endTime": request.args.get("endTime", type=int),
@@ -73,7 +72,7 @@ def es_api_handler(
             # 构建ES查询
             es_query = build_es_query(
                 model_name=adjusted_params["model_name"],
-                engine_version=str(adjusted_params["engineVersion"]),  # 统一转str匹配ES
+                engine_version=str(adjusted_params["engineVersion"]),
                 start_time=adjusted_params["startTime"],
                 end_time=adjusted_params["endTime"]
             )
@@ -83,7 +82,7 @@ def es_api_handler(
                 index_name=es_index_name,
                 query=es_query,
                 size=adjusted_params["size"],
-                sort=[{"source.created_at": {"order": "desc"}}]  # 统一按时间降序（可按需关闭）
+                sort=[{"source.created_at": {"order": "desc"}}]
             )
 
             # 处理响应（不同接口用不同process函数）
@@ -130,7 +129,8 @@ def adjust_model_list_params(params: Dict) -> Dict:
     return {**params, "model_name": params["models"]}
 
 def format_model_list_log(params: Dict, result: List[Dict]) -> str:
-    return f"模型列表查询完成：返回模型数={len(result)}，查询条件=models={params['model_name']}, engineVersion={params['engineVersion']}"
+    return (f"模型列表查询完成：返回模型数={len(result)}，查询条件=models={params['model_name']}, "
+            f"engineVersion={params['engineVersion']}")
 
 
 # 模型详情接口专用函数（已按你的格式）
@@ -167,7 +167,7 @@ def get_server_commits_list():
     )()
 
 
-@app.route("/server/model/list", methods=["GET"])
+@app.route("/server/data-detail-compare/list", methods=["GET"])
 def get_server_model_list():
     return es_api_handler(
         adjust_params=adjust_model_list_params,
