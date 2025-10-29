@@ -153,6 +153,7 @@ def process_es_commit_response(es_response: ObjectApiResponse[Any]) -> Dict[str,
 
     return result
 
+
 def _safe_get(es_source: Dict, key: str, default: Optional[any] = None) -> any:
     """
     安全从ES source中取值（避免KeyError，处理空值）

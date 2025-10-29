@@ -120,6 +120,7 @@ def es_api_handler(
 def adjust_commit_params(params: Dict) -> Dict:
     return {** params, "model_name": None if params["models"] == "all" else params["models"]}
 
+
 def format_commit_log(params: Dict, result: Dict) -> str:
     return f"查询完成：模型数={len(result)}，总记录数={sum(len(v) for v in result.values())}"
 
@@ -127,6 +128,7 @@ def format_commit_log(params: Dict, result: Dict) -> str:
 # 模型列表接口专用函数
 def adjust_model_list_params(params: Dict) -> Dict:
     return {**params, "model_name": params["models"]}
+
 
 def format_model_list_log(params: Dict, result: List[Dict]) -> str:
     return (f"模型列表查询完成：返回模型数={len(result)}，查询条件=models={params['model_name']}, "
@@ -136,6 +138,7 @@ def format_model_list_log(params: Dict, result: List[Dict]) -> str:
 # 模型详情接口专用函数（已按你的格式）
 def adjust_model_detail_params(params: Dict) -> Dict:
     return {** params, "model_name": params["models"]}
+
 
 def format_model_detail_log(params: Dict, result: List[Dict]) -> str:
     return (f"模型详情查询完成：返回数据条数={len(result)}，"
