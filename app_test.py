@@ -10,7 +10,8 @@ from api_utils import (
     check_input_params,
     build_es_query,
     process_es_commit_response,
-    process_es_model_response
+    process_es_model_response,
+    process_es_model_detail_response
 )
 
 
@@ -180,6 +181,79 @@ def get_server_model_list():
         err_msg = f"服务内部错误：{str(e)}"
         logger.error(err_msg, exc_info=True)
         return jsonify(format_fail(err_msg)), 500
+
+
+@app.route("/server/data-details/list", methods=["GET"])
+def get_server_model_detail_list():
+    """模型详情数据列表接口（/server/data-details/list）"""
+    # ES连接检查
+    if not es_handler:
+        err_msg = "服务异常：ES连接未就绪"
+        logger.error(err_msg)
+        return jsonify(format_fail(err_msg)), 500
+
+    try:
+        # 提取原始参数
+        raw_params = {
+            "startTime": request.args.get("startTime", type=int),
+            "endTime": request.args.get("endTime", type=int),
+            "models": request.args.get("models", type=str),
+            "engineVersion": request.args.get("engineVersion", default=0, type=int),
+            "size": request.args.get("size", type=int)
+        }
+
+        # 参数校验
+        valid, err_msg, params = check_input_params(raw_params)
+        if not valid:
+            logger.warning(err_msg)
+            return jsonify(format_fail(err_msg)), 400
+
+        # 构建ES查询
+        model_name = params["models"]
+        es_query = build_es_query(
+            model_name=model_name,
+            engine_version=str(params["engineVersion"]),  # 转str匹配ES的keyword类型
+            start_time=params["startTime"],
+            end_time=params["endTime"]
+        )
+
+        # 执行ES查询
+        es_response = es_handler.search(
+            index_name=es_index_name,
+            query=es_query,
+            size=params["size"],
+            # sort=[{"source.created_at": {"order": "desc"}}]  # 最新数据在前
+        )
+
+        # 处理响应数据
+        result = process_es_model_detail_response(es_response)
+
+        # 日志记录
+        logger.info(
+            f"模型详情查询完成：返回数据条数={len(result)}，"
+            f"查询条件=models={model_name}, engineVersion={params['engineVersion']}, "
+            f"时间范围={params['startTime']}~{params['endTime']}"
+        )
+        return jsonify(result)
+
+    # 异常处理
+    except ValueError as e:
+        err_msg = f"参数错误：{str(e)}"
+        logger.error(err_msg)
+        return jsonify(format_fail(err_msg)), 400
+    except exceptions.RequestError as e:
+        err_msg = f"ES查询失败：{e.error}（详情：{e.info.get('error', {}).get('reason', '')}）"
+        logger.error(err_msg, exc_info=True)
+        return jsonify(format_fail(err_msg)), 500
+    except exceptions.ConnectionError:
+        err_msg = "ES连接失败：无法连接到ES服务（检查网络或服务状态）"
+        logger.error(err_msg, exc_info=True)
+        return jsonify(format_fail(err_msg)), 500
+    except Exception as e:
+        err_msg = f"服务内部错误：{str(e)}"
+        logger.error(err_msg, exc_info=True)
+        return jsonify(format_fail(err_msg)), 500
+
 
 
 if __name__ == "__main__":
