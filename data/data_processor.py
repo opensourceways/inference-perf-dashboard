@@ -529,7 +529,7 @@ def ensure_unique_id(
         existing_ids.add(new_id)
         return True
 
-def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Any]]:
+def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
     """
     主函数：确保生成 模型-commit_id组合数据 + 单commit_id数据 + 单日期数据 + 总表数据
     返回：所有有效模型的metrics数据列表（确保多维度数据完整）
@@ -670,7 +670,7 @@ def generate_metrics_data(target_date: str = "20251022") -> List[Dict[str, Any]]
         print(f"4. 总表数据量：{len(total_data)}（去重后所有有效数据）")
 
     except Exception as e:
-        print(f"全局处理异常：{str(e)}，但已尽力保留已处理数据")
+        print(f"全局处理异常：{str(e)}，已保留已处理数据")
 
     # 最终返回所有有效模型数据（确保非空）
     print(f"=== 整体处理完成！共生成 {len(all_valid_metrics)} 个有效模型数据 ===")
@@ -685,7 +685,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "target_date",  # 参数名（命令行传参时直接跟值，不用加前缀）
         nargs="?",  # 允许参数可选（没传时用默认值）
-        default="20251022",
+        default=None,
         help="目标日期，格式为 YYYYMMDD（例如 20251023，默认：20251022）"
     )
 
