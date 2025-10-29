@@ -164,7 +164,7 @@ def get_server_commits_list():
         adjust_params=adjust_commit_params,
         process_response=process_es_commit_response,
         format_log=format_commit_log
-    )
+    )()
 
 
 @app.route("/server/model/list", methods=["GET"])
@@ -173,7 +173,7 @@ def get_server_model_list():
         adjust_params=adjust_model_list_params,
         process_response=process_es_model_response,
         format_log=format_model_list_log
-    )
+    )()
 
 
 @app.route("/server/data-details/list", methods=["GET"])
@@ -182,7 +182,7 @@ def get_server_model_detail_list():
         adjust_params=adjust_model_detail_params,
         process_response=process_es_model_detail_response,
         format_log=format_model_detail_log
-    )
+    )()
 
 
 if __name__ == "__main__":
