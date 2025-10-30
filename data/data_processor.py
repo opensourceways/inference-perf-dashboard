@@ -3,7 +3,7 @@ import argparse
 import pandas as pd
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, List, Tuple, DefaultDict
 from dataclasses import asdict
 
@@ -290,7 +290,7 @@ def get_date_str(date_str: str = None) -> str:
 
     参数:
         date_str: 可选，指定日期（格式：YYYYMMDD，如"20251022"）
-                  若为None，则自动使用当前日期
+                  若为None，则自动使用T+1日期
 
     返回:
         tuple: (current_date_str: 日期字符串（YYYYMMDD）
@@ -306,9 +306,9 @@ def get_date_str(date_str: str = None) -> str:
         except ValueError:
             raise ValueError(f"传入的date_str格式错误，应为YYYYMMDD，实际为：{date_str}")
     else:
-        # 无传入日期时，使用当前日期（YYYYMMDD）
-        current_date = datetime.now().date()
-        current_date_str = current_date.strftime("%Y%m%d")
+        # 无传入日期时，使用当前日期的前一天（昨天），格式化为YYYYMMDD
+        yesterday = datetime.now().date() - timedelta(days=1)  # 核心修改：当前日期减1天
+        current_date_str = yesterday.strftime("%Y%m%d")
         return current_date_str
 
 
