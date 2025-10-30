@@ -10,7 +10,7 @@ from dataclasses import asdict
 from data_models import Metric, PRInfo
 from es_command import es_operation
 
-ROOT_DIR = os.path.expanduser("~/.cache/aisbench")
+ROOT_DIR = os.path.expanduser("/root/.cache/aisbench")
 
 def parse_metrics_csv(csv_path: str, stage: str = "stable") -> Dict[str, float | int]:
     """解析性能CSV，返回Metric类所需字段（匹配类定义，含延迟/总token数）"""
