@@ -10,7 +10,7 @@ from dataclasses import asdict
 from data_models import Metric, PRInfo
 from es_command import es_operation
 
-ROOT_DIR = os.path.expanduser("/root/.cache/aisbench")
+ROOT_DIR = os.path.expanduser("/data/ascend-ci-share-pkking-sglang/aisbench")
 METRIC_CSV_DIR = "gsm8kdataset.csv"
 METRIC_JSON_DIR = "gsm8kdataset.json"
 PR_INFO_DIR = 'pr.json'
