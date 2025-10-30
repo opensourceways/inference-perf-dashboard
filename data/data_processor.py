@@ -88,6 +88,7 @@ def parse_metrics_csv(csv_path: str, stage: str = "stable") -> Dict[str, float |
 
     return parsed_data
 
+
 def parse_metrics_json(json_path: str, stage: str = "stable") -> Dict[str, Any]:
     """解析JSON，返回 Metric 类所需的“并发/吞吐量”字段（按类字段类型自动转换）"""
     try:
@@ -143,6 +144,7 @@ def parse_metrics_json(json_path: str, stage: str = "stable") -> Dict[str, Any]:
 
     return json_metrics
 
+
 def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
     """解析PR JSON，返回 PRInfo 对象和 commit_id"""
     try:
@@ -187,6 +189,7 @@ def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
 
     return pr_info, pr_data["commit_id"].strip()
 
+
 def merge_metrics(csv_metrics: Dict[str, float], json_metrics: Dict[str, Any]) -> Dict[str, Any]:
     """合并CSV和JSON指标，先生成 Metric 对象（确保字段完整），再转为字典"""
     # 合并所有指标字段
@@ -201,6 +204,7 @@ def merge_metrics(csv_metrics: Dict[str, float], json_metrics: Dict[str, Any]) -
     metric_obj = Metric(**all_metric_fields)
     # 转为字典（用于后续与 PR 信息整合）
     return asdict(metric_obj)
+
 
 def create_metrics_data(
         csv_path: str,
@@ -240,6 +244,7 @@ def create_metrics_data(
         "source": source
     }
 
+
 def batch_create_metrics_data(model_configs: List[Dict[str, str]]) -> List[Dict[str, Dict]]:
     """
     批量生成目标格式数据：返回列表，每个元素是单模型的 {"ID": ..., "source": ...}
@@ -266,6 +271,7 @@ def batch_create_metrics_data(model_configs: List[Dict[str, str]]) -> List[Dict[
 
     return metrics_data_list
 
+
 def get_subdir_names(dir_path: str) -> List[str]:
     """获取子目录名称"""
     subdir_names = []
@@ -276,6 +282,7 @@ def get_subdir_names(dir_path: str) -> List[str]:
             subdir_names.append(entry)
 
     return subdir_names
+
 
 def get_date_str(date_str: str = None) -> str:
     """
@@ -304,6 +311,7 @@ def get_date_str(date_str: str = None) -> str:
         current_date_str = current_date.strftime("%Y%m%d")
         return current_date_str
 
+
 def get_dynamic_paths(date_str: str = None, commit_id: str = None) -> tuple[str, str, str, list[str]]:
     """
     根据传入的日期字符串生成数据目录路径，默认使用当前日期
@@ -323,6 +331,7 @@ def get_dynamic_paths(date_str: str = None, commit_id: str = None) -> tuple[str,
         return current_date_str, date_dir, commit_dir_full, model_names
     except Exception as e:
         raise Exception(f"获取动态路径失败：{str(e)}")
+
 
 def check_model_files(current_date_str: str, commit_id: str, model_name: str) -> Tuple[bool, List[str], Dict[str, str]]:
     """
@@ -351,6 +360,7 @@ def check_model_files(current_date_str: str, commit_id: str, model_name: str) ->
 
     return len(missing_files) == 0, missing_files, file_paths
 
+
 def generate_single_model_data(model_name: str, file_paths: Dict[str, str]) -> Dict[str, Any]:
     """
     根据文件路径生成当前模型的metrics数据
@@ -378,6 +388,7 @@ def generate_single_model_data(model_name: str, file_paths: Dict[str, str]) -> D
         return model_metrics[0]  # 单个模型仅1条数据
     except Exception as e:
         raise Exception(f"数据生成失败：{str(e)}")
+
 
 def write_model_data_to_file(current_date_str: str, commit_id: str, model_name: str, current_data: Dict[str, Any]) -> None:
     """
@@ -410,12 +421,11 @@ def write_model_data_to_file(current_date_str: str, commit_id: str, model_name: 
     else:
         print(f"模型 {model_name} 跳过：已有相同ID数据")
 
+
 def write_aggregated_files(
     total_data: List[Dict[str, Any]],
     commit_id_grouped: Dict[str, List[Dict[str, Any]]],
-    date_grouped: Dict[str, List[Dict[str, Any]]],
-    current_date_str: str,
-    commit_id: str  # 当前批次的commit_id（从PR文件中提取，确保唯一）
+    date_grouped: Dict[str, List[Dict[str, Any]]]
 ) -> None:
     """
     生成三类聚合文件：总表、commit_id维度、日期维度
@@ -423,8 +433,6 @@ def write_aggregated_files(
         total_data: 总表数据（所有模型数据列表）
         commit_id_grouped: 按commit_id分组的数据（key: commit_id，value: 该commit下所有模型数据）
         date_grouped: 按日期分组的数据（key: 日期字符串，value: 该日期下所有模型数据）
-        current_date_str: 当前处理的日期（YYYYMMDD）
-        commit_id: 当前批次的commit_id（从PR文件提取，确保分组key唯一）
     """
     output_root_dir = "output"
     os.makedirs(output_root_dir, exist_ok=True)  # 确保输出目录存在
@@ -458,8 +466,9 @@ def write_aggregated_files(
         except Exception as e:
             print(f"保存日期={date_str}文件失败：{str(e)}")
 
+
 def _check_existing_id(output_file: str, current_data: Dict[str, Any]) -> bool:
-    """内部辅助：检查已有文件的ID是否与当前数据ID重复"""
+    """检查已有文件的ID是否与当前数据ID重复"""
     try:
         # 读取已有文件
         with open(output_file, "r", encoding="utf-8") as f:
@@ -484,8 +493,9 @@ def _check_existing_id(output_file: str, current_data: Dict[str, Any]) -> bool:
         print(f"校验ID时出错：{str(e)}，将覆盖文件")
         return False
 
+
 def _extract_id_from_data(data: Any, data_type: str) -> str:
-    """内部辅助：从数据（列表/字典）中提取ID，无ID则抛异常"""
+    """从数据（列表/字典）中提取ID，无ID则抛异常"""
     if isinstance(data, list):
         if not data:
             raise Exception(f"{data_type}为空列表，无有效ID")
@@ -499,6 +509,7 @@ def _extract_id_from_data(data: Any, data_type: str) -> str:
         return data["ID"]
     else:
         raise Exception(f"{data_type}格式不支持（仅列表/字典），实际：{type(data).__name__}")
+
 
 def ensure_unique_id(
         target_list: List[Dict[str, Any]],
@@ -528,6 +539,7 @@ def ensure_unique_id(
         target_list.append(new_item)
         existing_ids.add(new_id)
         return True
+
 
 def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
     """
@@ -658,8 +670,6 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
             total_data=total_data,
             commit_id_grouped=commit_id_grouped,
             date_grouped=date_grouped,
-            current_date_str=current_date_str,
-            commit_id=commit_ids[-1]  # 传入最后一个commit_id（仅用于函数参数兼容，不影响分组）
         )
 
         # 数据完整性校验（打印汇总信息，确保多维度数据存在）
@@ -675,6 +685,7 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
     # 最终返回所有有效模型数据（确保非空）
     print(f"=== 整体处理完成！共生成 {len(all_valid_metrics)} 个有效模型数据 ===")
     return all_valid_metrics if all_valid_metrics else []
+
 
 # ---------------------- 函数调用（主入口） ----------------------
 if __name__ == "__main__":

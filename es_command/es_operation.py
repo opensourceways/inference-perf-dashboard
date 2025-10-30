@@ -25,6 +25,7 @@ class ESHandler:
         self.lock = threading.Lock()  # 线程锁，保证添加/修改/删除的原子性
         self._check_connection()  # 验证连接是否成功
 
+
     def _check_connection(self) -> None:
         """检查ES连接是否正常"""
         try:
@@ -34,6 +35,7 @@ class ESHandler:
             raise ConnectionError("无法连接到ES服务，请检查地址和端口")
         except exceptions.AuthenticationException:
             raise PermissionError("认证失败，请检查用户名和密码")
+
 
     def create_index(self, index_name: str, mappings: Optional[Dict] = None) -> bool:
         """
@@ -54,6 +56,7 @@ class ESHandler:
             print(f"创建索引失败：{e.error}（{e.info}）")
             return False
 
+
     def check_id_exists(self, index_name: str, doc_id: str) -> HeadApiResponse | bool:
         """
         检查文档ID是否存在
@@ -66,6 +69,7 @@ class ESHandler:
         except exceptions.RequestError as e:
             print(f"检查ID失败：{e.error}")
             return False
+
 
     def add_data(self, index_name: str, doc_id: str, data: Dict) -> bool:
         """
@@ -102,6 +106,7 @@ class ESHandler:
                 print(f"添加数据失败：{e.error}（{e.info}）")
                 return False
 
+
     def update_data(self, index_name: str, doc_id: str, update_fields: Dict) -> bool:
         """
         修改数据（带锁，只更新指定字段）
@@ -131,6 +136,7 @@ class ESHandler:
                 print(f"更新数据失败：{e.error}（{e.info}）")
                 return False
 
+
     def delete_data(self, index_name: str, doc_id: str) -> bool:
         """
         删除数据（带锁，防止并发删除冲突）
@@ -154,6 +160,7 @@ class ESHandler:
                 print(f"删除数据失败：{e.error}（{e.info}）")
                 return False
 
+
     def get_data(self, index_name: str, doc_id: str) -> Optional[Dict]:
         """
         查询单条数据
@@ -170,6 +177,7 @@ class ESHandler:
         except exceptions.RequestError as e:
             print(f"查询数据失败：{e.error}")
             return None
+
 
     def search(
             self,
