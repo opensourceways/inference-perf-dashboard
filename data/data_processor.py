@@ -11,6 +11,9 @@ from data_models import Metric, PRInfo
 from es_command import es_operation
 
 ROOT_DIR = os.path.expanduser("/root/.cache/aisbench")
+METRIC_CSV_DIR = "gsm8kdataset.csv"
+METRIC_JSON_DIR = "gsm8kdataset.json"
+PR_INFO_DIR = 'pr.json'
 
 def parse_metrics_csv(csv_path: str, stage: str = "stable") -> Dict[str, float | int]:
     """解析性能CSV，返回Metric类所需字段（匹配类定义，含延迟/总token数）"""
@@ -347,9 +350,9 @@ def check_model_files(current_date_str: str, commit_id: str, model_name: str) ->
     """
     # 构建3个关键文件的路径
     file_paths = {
-        "csv_path": os.path.join(ROOT_DIR, current_date_str, commit_id, model_name, "gsm8kdataset.csv"),
-        "metrics_json_path": os.path.join(ROOT_DIR, current_date_str, commit_id, model_name, "gsm8kdataset.json"),
-        "pr_json_path": os.path.join(ROOT_DIR, current_date_str, commit_id, "pr.json")
+        "csv_path": os.path.join(ROOT_DIR, current_date_str, commit_id, model_name, METRIC_CSV_DIR),
+        "metrics_json_path": os.path.join(ROOT_DIR, current_date_str, commit_id, model_name, METRIC_JSON_DIR),
+        "pr_json_path": os.path.join(ROOT_DIR, current_date_str, commit_id, PR_INFO_DIR)
     }
 
     # 检查文件存在性
