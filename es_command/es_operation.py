@@ -194,12 +194,16 @@ class ESHandler:
         :param sort: 排序条件（可选，格式：[{"字段名": {"order": "desc/asc"}}]）
         :return: ES 原始响应
         """
+        body = {
+            "query": query,
+            "size": size
+        }
+        if sort is not None:
+            body["sort"] = sort
         try:
             return self.es.search(
                 index=index_name,
-                query=query,
-                size=size,
-                sort=sort
+                body=body
             )
         except exceptions.RequestError as e:
             logger.error(f"批量查询失败：{e.error}（{e.info}）")
