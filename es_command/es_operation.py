@@ -178,7 +178,6 @@ class ESHandler:
             print(f"查询数据失败：{e.error}")
             return None
 
-
     def search(
             self,
             index_name: str,
@@ -192,7 +191,7 @@ class ESHandler:
         :param query: 查询条件（ES 语法）
         :param size: 返回数量
         :param sort: 排序条件（可选，格式：[{"字段名": {"order": "desc/asc"}}]）
-        :return: ES 原始响应
+        :return: ES 原始响应（字典类型）
         """
         try:
             return self.es.search(
