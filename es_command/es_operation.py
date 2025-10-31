@@ -200,6 +200,7 @@ class ESHandler:
         }
         if sort is not None:
             body["sort"] = sort
+        print(f"执行ES查询：索引={index_name}，条件={query}，大小={size}，排序={sort}")
         try:
             return self.es.search(
                 index=index_name,
