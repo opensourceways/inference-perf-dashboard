@@ -19,5 +19,5 @@ ENV TZ=Asia/Shanghai
 
 RUN echo -e "#!/bin/bash\ncron -f &\ngunicorn --bind 0.0.0.0:5000 app:app" > /app/start.sh && chmod +x /app/start.sh
 
-USER appuser
+#USER appuser
 CMD ["/app/start.sh"]
