@@ -184,7 +184,7 @@ class ESHandler:
             index_name: str,
             query: Dict,
             size: int = 10000,
-            sort: Optional[List[Dict]] = None
+            sort = None
     ) -> Dict[str, any]:
         """
         执行批量查询（支持条件筛选）
