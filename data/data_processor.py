@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Tuple, DefaultDict
 from dataclasses import asdict
 
-from data_models import Metric, PRInfo
+from data.data_models import Metric, PRInfo
 from es_command import es_operation
 
 ROOT_DIR = os.path.expanduser("/data/ascend-ci-share-pkking-sglang/aisbench")
