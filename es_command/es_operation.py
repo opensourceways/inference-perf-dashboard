@@ -36,7 +36,6 @@ class ESHandler:
         except exceptions.AuthenticationException:
             raise PermissionError("认证失败，请检查用户名和密码")
 
-
     def create_index(self, index_name: str, mappings: Optional[Dict] = None) -> bool:
         """
         创建索引及映射（若索引已存在则不重复创建）
@@ -49,11 +48,24 @@ class ESHandler:
             return False
 
         try:
-            self.es.indices.create(index=index_name, mappings=mappings)
-            print(f"索引 '{index_name}' 创建成功")
+            body = {}
+            if mappings is not None and isinstance(mappings, Dict):
+                body["mappings"] = mappings
+
+            self.es.indices.create(
+                index=index_name,
+                body=body
+            )
+            logger.info(f"索引 '{index_name}' 创建成功（含映射配置）")
             return True
         except exceptions.RequestError as e:
-            print(f"创建索引失败：{e.error}（{e.info}）")
+            if e.error == "resource_already_exists_exception":
+                logger.info(f"索引 '{index_name}' 已存在（并发创建场景）")
+                return False
+            logger.error(f"创建索引失败：{e.error}（详情：{e.info}）")
+            return False
+        except exceptions.ConnectionError:
+            logger.error(f"创建索引失败：无法连接到 ES 服务")
             return False
 
 

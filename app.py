@@ -71,7 +71,7 @@ def es_api_handler(
 
             # 构建ES查询
             es_query = build_es_query(
-                model_name=adjusted_params["model_names"],
+                model_names=adjusted_params["model_names"],
                 engine_version=str(adjusted_params["engineVersion"]),
                 start_time=adjusted_params["startTime"],
                 end_time=adjusted_params["endTime"]
@@ -132,7 +132,7 @@ def adjust_model_list_params(params: Dict) -> Dict:
 
 
 def format_model_list_log(params: Dict, result: List[Dict]) -> str:
-    return (f"模型列表查询完成：返回模型数={len(result)}，查询条件=models={params['model_name']}, "
+    return (f"模型列表查询完成：返回模型数={len(result)}，查询条件=models={params['model_names']}, "
             f"engineVersion={params['engineVersion']}")
 
 
@@ -143,7 +143,7 @@ def adjust_model_detail_params(params: Dict) -> Dict:
 
 def format_model_detail_log(params: Dict, result: List[Dict]) -> str:
     return (f"模型详情查询完成：返回数据条数={len(result)}，"
-            f"查询条件=models={params['model_name']}, engineVersion={params['engineVersion']}, "
+            f"查询条件=models={params['model_names']}, engineVersion={params['engineVersion']}, "
             f"时间范围={params['startTime']}~{params['endTime']}")
 
 

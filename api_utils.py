@@ -56,7 +56,7 @@ def check_input_params(params: Dict) -> Tuple[bool, str, Optional[Dict]]:
 
 
 def build_es_query(
-    model_name: Optional[str] = None,
+    model_names: Optional[List[str]] = None,
     engine_version: Optional[str] = None,
     start_time: Optional[int] = None,
     end_time: Optional[int] = None
