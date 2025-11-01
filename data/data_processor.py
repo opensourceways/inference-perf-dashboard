@@ -15,7 +15,7 @@ METRIC_CSV_DIR = "gsm8kdataset.csv"
 METRIC_JSON_DIR = "gsm8kdataset.json"
 PR_INFO_DIR = 'pr.json'
 
-def parse_metrics_csv(csv_path: str, stage: str = "stable") -> Dict[str, float | int]:
+def parse_metrics_csv(csv_path: str, stage: str = "total") -> Dict[str, float | int]:
     """解析性能CSV，返回Metric类所需字段（匹配类定义，含延迟/总token数）"""
     # 读取CSV并按stage过滤
     try:
@@ -92,7 +92,7 @@ def parse_metrics_csv(csv_path: str, stage: str = "stable") -> Dict[str, float |
     return parsed_data
 
 
-def parse_metrics_json(json_path: str, stage: str = "stable") -> Dict[str, Any]:
+def parse_metrics_json(json_path: str, stage: str = "total") -> Dict[str, Any]:
     """解析JSON，返回 Metric 类所需的“并发/吞吐量”字段（按类字段类型自动转换）"""
     try:
         with open(json_path, "r", encoding="utf-8") as f:
@@ -214,7 +214,7 @@ def create_metrics_data(
         metrics_json_path: str,
         pr_json_path: str,
         model_name: str,
-        stage: str = "stable"
+        stage: str = "total"
 ) -> Dict[str, Dict]:
     """生成目标格式数据：整合 PRInfo + Metric（基于 Metric 类确保指标完整）"""
     # 解析基础数据（PR信息 + 分源指标）
@@ -265,7 +265,7 @@ def batch_create_metrics_data(model_configs: List[Dict[str, str]]) -> List[Dict[
                 metrics_json_path=config["metrics_json_path"],
                 pr_json_path=config["pr_json_path"],
                 model_name=config["model_name"],
-                stage=config.get("stage", "stable")
+                stage=config.get("stage", "total")
             )
             metrics_data_list.append(single_model_data)
         except Exception as e:
@@ -381,7 +381,7 @@ def generate_single_model_data(model_name: str, file_paths: Dict[str, str]) -> D
                 "csv_path": file_paths["csv_path"],
                 "metrics_json_path": file_paths["metrics_json_path"],
                 "pr_json_path": file_paths["pr_json_path"],
-                "stage": "stable"
+                "stage": "total"
             }
         ]
         # 生成数据
