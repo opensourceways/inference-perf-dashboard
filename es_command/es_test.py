@@ -14,8 +14,8 @@ if __name__ == "__main__":
         "source": {
             "pr_id": "123456",
             "commit_id": "la2b3c4d",
-            "commit_title": "This is a test.",
-            "created_at": "2025-10-22T15:20:00",
+            "pr_title": "This is a test.",
+            "merged_at": "2025-10-22T15:20:00",
             "sglang_branch": "main",
             "model_name": "Qwen3-32B",
             "device": "Ascend910B3",

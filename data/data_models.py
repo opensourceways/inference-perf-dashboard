@@ -37,7 +37,7 @@ class PRInfo:
     """PR信息类，包含PR编号、日期、分支等元信息"""
     pr_id: str
     commit_id: str
-    commit_title: str
-    created_at: str
+    pr_title: str
+    merged_at: str
     sglang_branch: str = None
 

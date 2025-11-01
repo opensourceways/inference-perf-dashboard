@@ -78,7 +78,7 @@ def build_es_query(
             "term": {"source.engine_version": engine_version}
         })
 
-    # 按时间范围筛选（source.created_at）
+    # 按时间范围筛选（source.merged_at）
     if start_time or end_time:
         time_range = {}
         if start_time:
@@ -89,7 +89,7 @@ def build_es_query(
             end_date = pd.Timestamp(end_time, unit="s").strftime("%Y-%m-%dT%H:%M:%S")
             time_range["lte"] = end_date
         query["bool"]["must"].append({
-            "range": {"source.created_at": time_range}
+            "range": {"source.merged_at": time_range}
         })
 
     # 若没有筛选条件，默认匹配所有
@@ -105,7 +105,7 @@ def process_es_commit_response(es_response) -> Dict[str, List[Dict]]:
     valid_records: List[Dict] = []
     for hit in es_response.get("hits", {}).get("hits", []):
         source = hit.get("_source", {}).get("source", {})
-        required_fields = ["model_name", "sglang_branch", "device", "commit_id", "created_at"]
+        required_fields = ["model_name", "sglang_branch", "device", "commit_id", "merged_at"]
         if not all(f in source for f in required_fields):
             logger.warning(f"跳过字段缺失的记录（缺少必要字段）：{source}")
             continue
@@ -115,11 +115,11 @@ def process_es_commit_response(es_response) -> Dict[str, List[Dict]]:
     processed: List[Dict] = []
     for record in valid_records:
         try:
-            created_at_dt = pd.to_datetime(record["created_at"], errors="coerce")
-            if pd.isna(created_at_dt):
+            merged_at_dt = pd.to_datetime(record["merged_at"], errors="coerce")
+            if pd.isna(merged_at_dt):
                 raise ValueError("无法解析时间格式")
             # 转换为秒级时间戳
-            time_stamp = int((created_at_dt - pd.Timestamp("1970-01-01")) // pd.Timedelta("1s"))
+            time_stamp = int((merged_at_dt - pd.Timestamp("1970-01-01")) // pd.Timedelta("1s"))
             processed.append({
                 "model_name": record["model_name"],
                 "branch": record["sglang_branch"],
@@ -128,7 +128,7 @@ def process_es_commit_response(es_response) -> Dict[str, List[Dict]]:
                 "time": time_stamp
             })
         except ValueError as e:
-            logger.warning(f"时间格式错误（{record['created_at']}）：{str(e)}")
+            logger.warning(f"时间格式错误（{record['merged_at']}）：{str(e)}")
             continue
 
     # 按模型分组+去重
@@ -260,7 +260,7 @@ def process_es_model_response(es_response) -> List[Dict]:
 def map_es_to_model_detail(es_source: Dict) -> Dict:
     """模型详情接口：ES数据→接口格式映射"""
     return {
-        "time": _convert_datetime_to_timestamp(_safe_get(es_source, "created_at")),
+        "time": _convert_datetime_to_timestamp(_safe_get(es_source, "merged_at")),
         "model_name": _safe_get(es_source, "model_name"),
         "hash": _safe_get(es_source, "commit_id"),
         "status": _safe_get(es_source, "status"),

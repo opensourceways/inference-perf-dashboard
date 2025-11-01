@@ -161,7 +161,7 @@ def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
     except json.JSONDecodeError as e:
         raise ValueError(f"PR JSON格式错误（解析失败）: {pr_json_path}，详情：{str(e)}")
 
-    required_fields = {"pr_id", "commit_id", "commit_title", "created_at", "sglang_branch"}
+    required_fields = {"pr_id", "commit_id", "pr_title", "merged_at", "sglang_branch"}
     # 获取JSON中实际存在的字段
     actual_fields = set(pr_data.keys())
     # 检查缺失的必填字段
@@ -173,20 +173,20 @@ def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
     if empty_fields:
         raise ValueError(f"PR JSON字段值为空: {empty_fields}（需填写有效内容）")
 
-    created_at = pr_data["created_at"].strip()
+    merged_at = pr_data["merged_at"].strip()
     try:
         # 仅校验格式，不转换（确保输入即符合目标格式）
-        datetime.strptime(created_at, "%Y-%m-%dT%H:%M:%S")
+        datetime.strptime(merged_at, "%Y-%m-%dT%H:%M:%S")
     except ValueError:
         raise ValueError(
-            f"created_at格式错误: {created_at}（必须为YYYY-MM-DDTHH:MM:SS，示例：2025-10-22T14:51:00）"
+            f"merged_at格式错误: {merged_at}（必须为YYYY-MM-DDTHH:MM:SS，示例：2025-10-22T14:51:00）"
         )
 
     pr_info = PRInfo(
         pr_id=pr_data["pr_id"].strip(),
         commit_id=pr_data["commit_id"].strip(),
-        commit_title=pr_data["commit_title"].strip(),
-        created_at=created_at,
+        pr_title=pr_data["pr_title"].strip(),
+        merged_at=merged_at,
         sglang_branch=pr_data["sglang_branch"].strip()
     )
 
