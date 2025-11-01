@@ -3,13 +3,13 @@ import threading
 from typing import Dict, Optional, Any, Tuple, List
 
 import yaml
-from elastic_transport import HeadApiResponse, ObjectApiResponse
-from elasticsearch import Elasticsearch, exceptions, logger
+from elasticsearch import Elasticsearch, exceptions, logger # type: ignore
 from es_command import es_config
+from ssl import create_default_context
 
 class ESHandler:
     """Elasticsearch 操作封装类，支持数据CRUD及安全锁机制"""
-    def __init__(self, es_url: str, username: str, token: str, verify_certs: bool = False):
+    def __init__(self, es_url: str, username: str, token: str, ssl_context):
         """
         初始化ES连接
         :param es_url: ES服务地址（如 "https://localhost:9200"）
@@ -18,9 +18,9 @@ class ESHandler:
         :param verify_certs: 是否验证SSL证书
         """
         self.es = Elasticsearch(
-            es_url,
-            basic_auth=(username, token),
-            verify_certs=verify_certs
+            hosts=[es_url],
+            http_auth=(username, token),
+            ssl_context=ssl_context
         )
         self.lock = threading.Lock()  # 线程锁，保证添加/修改/删除的原子性
         self._check_connection()  # 验证连接是否成功
@@ -57,7 +57,7 @@ class ESHandler:
             return False
 
 
-    def check_id_exists(self, index_name: str, doc_id: str) -> HeadApiResponse | bool:
+    def check_id_exists(self, index_name: str, doc_id: str) -> bool:
         """
         检查文档ID是否存在
         :param index_name: 索引名称
@@ -95,7 +95,7 @@ class ESHandler:
                 return False
 
             try:
-                response = self.es.index(index=index_name, id=doc_id, document=data)
+                response = self.es.index(index=index_name, id=doc_id, body=data)
                 if response["result"] == "created":
                     print(f"文档 '{doc_id}' 添加成功")
                     return True
@@ -183,8 +183,8 @@ class ESHandler:
             index_name: str,
             query: Dict,
             size: int = 10000,
-            sort: Optional[List[Dict]] = None
-    ) -> ObjectApiResponse[Any]:
+            sort = None
+    ) -> Dict[str, any]:
         """
         执行批量查询（支持条件筛选）
         :param index_name: 索引名称
@@ -193,12 +193,17 @@ class ESHandler:
         :param sort: 排序条件（可选，格式：[{"字段名": {"order": "desc/asc"}}]）
         :return: ES 原始响应（字典类型）
         """
+        body = {
+            "query": query,
+            "size": size
+        }
+        if sort is not None:
+            body["sort"] = sort
+        print(f"执行ES查询：索引={index_name}，条件={query}，大小={size}，排序={sort}")
         try:
             return self.es.search(
                 index=index_name,
-                query=query,
-                size=size,
-                sort=sort
+                body=body
             )
         except exceptions.RequestError as e:
             logger.error(f"批量查询失败：{e.error}（{e.info}）")
@@ -237,11 +242,13 @@ def init_es_handler(config_path: Optional[str] = None) -> Tuple[Optional[ESHandl
 
         # 4. 提取 ES 配置参数（带默认值，增强容错）
         es_url = es_config.get("url")
-        es_username = es_config.get("username", "elastic")
+        es_username = es_config.get("username", "admin")
         es_token = es_config.get("token")
         verify_certs = es_config.get("verify_certs", False)
+        context = create_default_context()
+        context.check_hostname = False
+        context.verify_mode = verify_certs
         index_name = es_config.get("index_name", default_index)
-
         # 校验必填配置（url 和 token 不可缺失）
         if not es_url:
             raise KeyError("es 配置中缺少 'url' 字段")
@@ -253,7 +260,7 @@ def init_es_handler(config_path: Optional[str] = None) -> Tuple[Optional[ESHandl
             es_url=es_url,
             username=es_username,
             token=es_token,
-            verify_certs=verify_certs
+            ssl_context=context
         )
 
         # 6. 初始化成功，返回实例和索引名

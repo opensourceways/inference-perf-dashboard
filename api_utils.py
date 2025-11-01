@@ -3,7 +3,6 @@ from datetime import datetime
 
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Any, Callable
-from elastic_transport import ObjectApiResponse
 
 logger = logging.getLogger(__name__)
 ES_MAX_RESULT_SIZE = 10000
@@ -95,7 +94,7 @@ def build_es_query(
     return query if query["bool"]["must"] else {"match_all": {}}
 
 
-def process_es_commit_response(es_response: ObjectApiResponse[Any]) -> Dict[str, List[Dict]]:
+def process_es_commit_response(es_response) -> Dict[str, List[Dict]]:
     """
     处理ES提交列表响应，转换为「模型名→记录列表」格式
     """
@@ -207,7 +206,7 @@ def _format_pair_value(value: Optional[float], default: float = 0.0) -> str:
 
 
 def _process_es_response(
-    es_response: ObjectApiResponse[Any],
+    es_response,
     mapping_func: Callable[[Dict], Dict]  # 接收单条ES source，返回接口格式的函数
 ) -> List[Dict]:
     """
@@ -250,7 +249,7 @@ def map_es_to_response(es_source: Dict) -> Dict:
     }
 
 
-def process_es_model_response(es_response: ObjectApiResponse[Any]) -> List[Dict]:
+def process_es_model_response(es_response) -> List[Dict]:
     """模型列表接口：批量响应处理"""
     return _process_es_response(es_response, mapping_func=map_es_to_response)
 
@@ -278,6 +277,6 @@ def map_es_to_model_detail(es_source: Dict) -> Dict:
     }
 
 
-def process_es_model_detail_response(es_response: ObjectApiResponse[Any]) -> List[Dict]:
+def process_es_model_detail_response(es_response) -> List[Dict]:
     """模型详情接口：批量响应处理（"""
     return _process_es_response(es_response, mapping_func=map_es_to_model_detail)

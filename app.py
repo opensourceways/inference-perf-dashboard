@@ -82,7 +82,7 @@ def es_api_handler(
                 index_name=es_index_name,
                 query=es_query,
                 size=adjusted_params["size"],
-                sort=[{"source.created_at": {"order": "desc"}}]
+                sort=None
             )
 
             # 处理响应（不同接口用不同process函数）
