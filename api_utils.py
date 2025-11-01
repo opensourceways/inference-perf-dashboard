@@ -28,11 +28,14 @@ def check_input_params(params: Dict) -> Tuple[bool, str, Optional[Dict]]:
     if missing:
         return False, f"缺失必填参数：{','.join(missing)}", None
 
-    # 处理并校验参数
+    models_list = [m.strip() for m in params["models"].split(",") if m.strip()]
+    if not models_list:  # 拆分后为空（如models=",,"）
+        return False, "models参数不可为空（或仅含分隔符）", None
+
     processed_params = {
         "startTime": params["startTime"],
         "endTime": params["endTime"],
-        "models": params["models"].strip(),
+        "models": models_list,
         "engineVersion": params["engineVersion"],
         "size": ES_MAX_RESULT_SIZE if params["size"] is None else params["size"]
     }
@@ -64,12 +67,12 @@ def build_es_query(
     query = {"bool": {"must": []}}  # bool 查询，支持多条件组合
 
     # 按模型名筛选
-    if model_name:
+    if model_names and isinstance(model_names, List) and len(model_names) > 0:
         query["bool"]["must"].append({
-            "term": {"source.model_name": model_name}
+            "terms": {"source.model_name": model_names}  # terms 匹配多个模型
         })
 
-    # 按source.engine_version筛选
+    # 按engine_version筛选
     if engine_version:
         query["bool"]["must"].append({
             "term": {"source.engine_version": engine_version}
