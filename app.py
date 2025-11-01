@@ -71,7 +71,7 @@ def es_api_handler(
 
             # 构建ES查询
             es_query = build_es_query(
-                model_name=adjusted_params["model_name"],
+                model_name=adjusted_params["model_names"],
                 engine_version=str(adjusted_params["engineVersion"]),
                 start_time=adjusted_params["startTime"],
                 end_time=adjusted_params["endTime"]
@@ -118,7 +118,8 @@ def es_api_handler(
 
 # 提交列表接口专用函数
 def adjust_commit_params(params: Dict) -> Dict:
-    return {** params, "model_name": None if params["models"] == "all" else params["models"]}
+    model_names = None if params["models"] == ["all"] else params["models"]
+    return {**params, "model_names": model_names}
 
 
 def format_commit_log(params: Dict, result: Dict) -> str:
@@ -127,7 +128,7 @@ def format_commit_log(params: Dict, result: Dict) -> str:
 
 # 模型列表接口专用函数
 def adjust_model_list_params(params: Dict) -> Dict:
-    return {**params, "model_name": params["models"]}
+    return {**params, "model_names": params["models"]}
 
 
 def format_model_list_log(params: Dict, result: List[Dict]) -> str:
@@ -137,7 +138,7 @@ def format_model_list_log(params: Dict, result: List[Dict]) -> str:
 
 # 模型详情接口专用函数（已按你的格式）
 def adjust_model_detail_params(params: Dict) -> Dict:
-    return {** params, "model_name": params["models"]}
+    return {**params, "model_names": params["models"]}
 
 
 def format_model_detail_log(params: Dict, result: List[Dict]) -> str:
