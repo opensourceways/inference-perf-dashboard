@@ -264,7 +264,7 @@ def map_es_to_model_detail(es_source: Dict) -> Dict:
         "model_name": _safe_get(es_source, "model_name"),
         "hash": _safe_get(es_source, "commit_id"),
         "status": _safe_get(es_source, "status"),
-        "requests_per_second": _safe_get(es_source, "request_rate"),
+        "requests_per_second": _safe_get(es_source, "request_throughput"),
         "tokens_per_second": _safe_get(es_source, "total_token_throughput"),
         "qps": _safe_get(es_source, "request_rate"),
         "mean_itl_ms": _safe_get(es_source, "mean_itl_ms"),
