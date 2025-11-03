@@ -266,7 +266,7 @@ def map_es_to_model_detail(es_source: Dict) -> Dict:
         "status": _safe_get(es_source, "status"),
         "requests_per_second": _safe_get(es_source, "request_rate"),
         "tokens_per_second": _safe_get(es_source, "total_token_throughput"),
-        "qps": _safe_get(es_source, "request_throughput"),
+        "qps": _safe_get(es_source, "request_rate"),
         "mean_itl_ms": _safe_get(es_source, "mean_itl_ms"),
         "mean_tpot_ms": _safe_get(es_source, "mean_tpot_ms"),
         "mean_ttft_ms": _safe_get(es_source, "mean_ttft_ms"),
