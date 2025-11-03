@@ -6,7 +6,6 @@ class Metric:
     """模型性能指标类，包含延迟、吞吐量等核心指标"""
     __dataclass_fields__ = None
     model_name: str
-    device: str
     status: str
     tp: int
     engine_version: str
@@ -39,5 +38,6 @@ class PRInfo:
     commit_id: str
     pr_title: str
     merged_at: str
+    device: str
     sglang_branch: str = None
 

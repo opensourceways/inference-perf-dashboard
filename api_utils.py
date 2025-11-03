@@ -93,7 +93,6 @@ def build_es_query(
         })
 
     # 若没有筛选条件，默认匹配所有
-    print(f"*****query is {query}**********************")
     return query if query["bool"]["must"] else {"match_all": {}}
 
 
@@ -230,6 +229,7 @@ def _process_es_response(
 
 
 def map_es_to_response(es_source: Dict) -> Dict:
+    # 确定相同key值字段的冗余
     """模型列表接口：ES数据→接口格式映射（仅保留差异化字段）"""
     return {
         "device": _safe_get(es_source, "device"),
