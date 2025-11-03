@@ -116,8 +116,7 @@ def es_api_handler(
     return api_func
 
 
-# 提交列表接口专用函数
-def adjust_commit_params(params: Dict) -> Dict:
+def adjust_model_params(params: Dict) -> Dict:
     model_names = None if params["models"] == ["all"] else params["models"]
     return {**params, "model_names": model_names}
 
@@ -126,19 +125,9 @@ def format_commit_log(params: Dict, result: Dict) -> str:
     return f"查询完成：模型数={len(result)}，总记录数={sum(len(v) for v in result.values())}"
 
 
-# 模型列表接口专用函数
-def adjust_model_list_params(params: Dict) -> Dict:
-    return {**params, "model_names": params["models"]}
-
-
 def format_model_list_log(params: Dict, result: List[Dict]) -> str:
     return (f"模型列表查询完成：返回模型数={len(result)}，查询条件=models={params['model_names']}, "
             f"engineVersion={params['engineVersion']}")
-
-
-# 模型详情接口专用函数（已按你的格式）
-def adjust_model_detail_params(params: Dict) -> Dict:
-    return {**params, "model_names": params["models"]}
 
 
 def format_model_detail_log(params: Dict, result: List[Dict]) -> str:
@@ -165,7 +154,7 @@ def health_check():
 @app.route("/server/commits/list", methods=["GET"])
 def get_server_commits_list():
     return es_api_handler(
-        adjust_params=adjust_commit_params,
+        adjust_params=adjust_model_params,
         process_response=process_es_commit_response,
         format_log=format_commit_log
     )()
@@ -174,7 +163,7 @@ def get_server_commits_list():
 @app.route("/server/data-details-compare/list", methods=["GET"])
 def get_server_model_list():
     return es_api_handler(
-        adjust_params=adjust_model_list_params,
+        adjust_params=adjust_model_params,
         process_response=process_es_model_response,
         format_log=format_model_list_log
     )()
@@ -183,7 +172,7 @@ def get_server_model_list():
 @app.route("/server/data-details/list", methods=["GET"])
 def get_server_model_detail_list():
     return es_api_handler(
-        adjust_params=adjust_model_detail_params,
+        adjust_params=adjust_model_params,
         process_response=process_es_model_detail_response,
         format_log=format_model_detail_log
     )()
