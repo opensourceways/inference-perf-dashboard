@@ -140,7 +140,7 @@ def parse_metrics_json(json_path: str, stage: str = "total") -> Dict[str, Any]:
     # 校验：确保JSON解析出所有“仅在JSON中获取”的 Metric 必需字段
     json_required_fields = [
         "max_concurrency", "request_throughput", "total_input_tokens", "total_generated_tokens",
-        "input_token_throughput", "output_token_throughput", "total_token_throughput"
+        "input_token_throughput", "output_token_throughput", "total_token_throughput", "tp", "request_rate"
     ]
     missing_fields = [f for f in json_required_fields if f in metric_field_names and f not in json_metrics]
     if missing_fields:

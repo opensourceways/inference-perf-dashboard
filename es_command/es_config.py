@@ -19,7 +19,7 @@ class MetricMapping:
                     "sglang_branch": {"type": "keyword"},
                     "model_name": {"type": "keyword"},
                     "device": {"type": "keyword"},
-                    "request_rate": {"type": "float"},
+                    "request_rate": {"type": "integer"},
                     "mean_e2e1_ms": {"type": "float"},
                     "mean_ttft_ms": {"type": "float"},
                     "mean_tpot_ms": {"type": "float"},
