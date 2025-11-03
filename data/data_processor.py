@@ -454,6 +454,7 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
     total_existing_ids: Set[str] = set()  # 总表去重标识
     es_success_count: int = 0  # 统计ES写入成功次数
     es_fail_count: int = 0  # 统计ES写入失败次数
+    all_valid_metrics: List[Dict[str, Any]] = []
 
     print(f"=== 开始生成metrics数据（目标日期：{target_date}）===")
     try:
