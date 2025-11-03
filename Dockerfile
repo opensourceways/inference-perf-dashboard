@@ -1,23 +1,50 @@
 FROM python:3.11
+ENV DEBIAN_FRONTEND=noninteractive TZ=Asia/Shanghai
+ENV PIP_PROGRESS_BAR=off
+ENV PIP_NO_CACHE_DIR=1
+ENV PYTHONUNBUFFERED=1
+
+ENV OPENBLAS_NUM_THREADS=1
+ENV OMP_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
+ENV VECLIB_MAXINUM_THREADS=1
+ENV NUMEXPR_NUM_THREADS=1
 
 WORKDIR /app
 
 COPY . .
-RUN pip install --no-cache-dir -r requirements.txt --timeout 100 -i https://pypi.tuna.tsinghua.edu.cn/simple
-RUN apt-get update && apt-get install -y cron util-linux && rm -rf /var/lib/apt/lists/*
-RUN groupadd -g 1000 appgroup
+
+USER root
+
+RUN # sed -i 's|http://archive\.ubuntu\.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        cron \
+        vim \
+        util-linux && \
+    apt-get clean  && \
+    rm -rf /var/lib/apt/lists/*
+
+    
+RUN python3.11 -m pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple && \
+    python3.11 -m pip install --upgrade pip --no-cache-dir && \
+    python3.11 -m pip install -r requirements.txt --no-cache-dir --no-deps
+
+RUN groupadd -g 1000 appgroup 
 RUN useradd -m -u 1000 -g appgroup appuser
 RUN chown -R appuser:appgroup /app
 
 # 配置定时任务（每天凌晨3点执行 data_processor.py）
-RUN echo "0 3 * * * root su - appuser -c 'cd /app && python data/data_processor.py'" > /etc/cron.d/daily_processor
-RUN chmod 0644 /etc/cron.d/daily_processor
-RUN crontab /etc/cron.d/daily_processor
+RUN mkdir -p /etc/cron.d && \
+    echo "0 3 * * * root su - appuser -c 'cd /app && python -m data.data_processor'" > /etc/cron.d/daily_processor && \
+    chmod 0644 /etc/cron.d/daily_processor && \
+    touch /var/log/cron.log && \
+    chown appuser:appgroup /var/log/cron.log
 
 EXPOSE 5000
 ENV TZ=Asia/Shanghai
 
-RUN echo -e "#!/bin/bash\ncron -f &\ngunicorn --bind 0.0.0.0:5000 app:app" > /app/start.sh && chmod +x /app/start.sh
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:5000 app:app & wait"]
+# USER appuser
 
-#USER appuser
-CMD ["/app/start.sh"]
+# CMD ["sh", "-c", "cron -f & gunicorn --bind 0.0.0.0:5000 app:app & wait"]
