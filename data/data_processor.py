@@ -315,7 +315,7 @@ def get_date_str(date_str: str = None) -> str:
         return current_date_str
 
 
-def check_model_files(current_date_str, commit_id, request_rate, model_name):
+def check_model_files(current_date_str, commit_id, model_name, request_rate):
     """
     校验当前模型的CSV、指标JSON、PR JSON文件是否存在
     参数:
@@ -329,8 +329,8 @@ def check_model_files(current_date_str, commit_id, request_rate, model_name):
     """
     # 构建3个关键文件的路径
     file_paths = {
-        "csv_path": os.path.join(ROOT_DIR, current_date_str, commit_id, request_rate, model_name, METRIC_CSV_DIR),
-        "metrics_json_path": os.path.join(ROOT_DIR, current_date_str, commit_id, request_rate, model_name, METRIC_JSON_DIR),
+        "csv_path": os.path.join(ROOT_DIR, current_date_str, commit_id, model_name, request_rate, METRIC_CSV_DIR),
+        "metrics_json_path": os.path.join(ROOT_DIR, current_date_str, commit_id, model_name, request_rate, METRIC_JSON_DIR),
         "pr_json_path": os.path.join(ROOT_DIR, current_date_str, commit_id, PR_INFO_DIR)
     }
 
@@ -448,20 +448,15 @@ def ensure_unique_id(
 
 def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
     """
-    「遍历生成数据→写入ES→本地总表数据」
-    输出：1. ES数据库存储；2. 本地总表数据文件（JSON格式）；3. 返回总表数据列表
+    输出：ES写入 + 本地总表数据（JSON）
     """
-    # 仅保留「总表数据」相关容器（删除所有冗余维度）
     total_data: List[Dict[str, Any]] = []  # 本地总表数据
     total_existing_ids: Set[str] = set()  # 总表去重标识
     es_success_count: int = 0  # 统计ES写入成功次数
     es_fail_count: int = 0  # 统计ES写入失败次数
 
-    all_valid_metrics: List[Dict[str, Any]] = []  # 与total_data一致，可保留用于返回
     print(f"=== 开始生成metrics数据（目标日期：{target_date}）===")
-
     try:
-        # 基础路径与遍历初始化
         current_date_str = get_date_str(target_date)
         date_dir_full = os.path.join(ROOT_DIR, current_date_str)
         commit_ids = get_subdir_names(date_dir_full)
@@ -470,51 +465,58 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
             print(f"日期目录 {date_dir_full} 下无commit_id子目录，终止处理")
             return total_data
 
-        # ESHandler初始化
+        # ES初始化
         es_handler, es_index_name = es_operation.init_es_handler()
         if es_handler:
             print(f"ES连接初始化成功，索引：{es_index_name}")
         else:
             print("ES连接初始化失败，仅保留本地总表数据")
 
-        # 遍历逻辑（commit_id → request_rate → model_name）
+        # 遍历顺序为commit_id → model_name → request_rate
         for commit_id in commit_ids:
-            print(f"\n===== 处理 commit_id：{commit_id} =====")
+            print(f"===== 处理 commit_id：{commit_id} =====")
             try:
-                # 遍历commit_id
-                commit_dir_full = os.path.join(ROOT_DIR, current_date_str, commit_id)
-                request_rate_dirs = get_subdir_names(commit_dir_full)
+                # 遍历commit_id目录
+                commit_dir_full = os.path.join(date_dir_full, commit_id)
+                model_names = get_subdir_names(commit_dir_full)
 
-                if not request_rate_dirs:
-                    print(f"commit_id {commit_id} 下无request_rate子目录，跳过")
+                if not model_names:
+                    print(f"commit_id {commit_id} 下无model_name子目录，跳过")
                     continue
 
-                # 遍历request_rate
-                for request_rate in request_rate_dirs:
-                    print(f"\n----- 处理 request_rate：{request_rate}（commit：{commit_id}）-----")
-                    request_rate_full = os.path.join(commit_dir_full, request_rate)
-                    model_names = get_subdir_names(request_rate_full)
+                # 遍历model_name
+                for model_name in model_names:
+                    print(f"----- 处理 model_name：{model_name}（commit：{commit_id}）-----")
+                    model_dir_full = os.path.join(commit_dir_full, model_name)
+                    request_rate_dirs = get_subdir_names(model_dir_full)
 
-                    if not model_names:
-                        print(f"request_rate {request_rate} 下无model子目录，跳过")
+                    if not request_rate_dirs:
+                        print(f"model_name {model_name} 下无request_rate子目录，跳过")
                         continue
 
-                    # 遍历model_name
-                    for model_name in model_names:
-                        print(f"--- 处理 model：{model_name} ---")
+                    # 遍历request_rate
+                    for request_rate in request_rate_dirs:
+                        print(f"--- 处理 request_rate：{request_rate}（model：{model_name}）---")
+
+                        # 文件校验
                         is_file_valid, missing_files, file_paths = check_model_files(
-                            current_date_str, commit_id, request_rate, model_name
+                            current_date_str,
+                            commit_id,
+                            model_name,
+                            request_rate
                         )
                         if not is_file_valid:
-                            print(f"model {model_name} 跳过：缺少文件 → {', '.join(missing_files)}")
+                            print(f"组合 {model_name}@{request_rate} 跳过：缺少文件 → {', '.join(missing_files)}")
                             continue
 
+                        # 数据生成与写入
                         try:
                             current_data = generate_single_model_data(model_name, file_paths)
                             if not current_data or "ID" not in current_data:
                                 raise ValueError("数据为空或缺少必填字段'ID'")
                             data_id = current_data["ID"]
 
+                            # ES写入
                             if es_handler:
                                 print(f"正在写入ES：ID={data_id}")
                                 es_write_success = es_handler.add_data(
@@ -529,7 +531,7 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
                                     es_fail_count += 1
                                     print(f"写入失败：ID={data_id}")
 
-                            # 加入本地总表数据
+                            # 本地总表
                             if ensure_unique_id(total_data, current_data, total_existing_ids):
                                 all_valid_metrics.append(current_data)
                                 print(f"加入本地总表：ID={data_id}（总表当前条数：{len(total_data)}）")
@@ -537,14 +539,14 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
                                 print(f"本地总表已存在该数据：ID={data_id}，跳过")
 
                         except Exception as e:
-                            print(f"model {model_name} 处理失败：{str(e)}，继续下一个")
+                            print(f"request_rate {request_rate} 处理失败：{str(e)}，继续下一个")
                             continue
 
             except Exception as e:
                 print(f"commit_id {commit_id} 处理异常：{str(e)}，继续下一个")
                 continue
 
-        # 本地总表数据写入文件
+        # 本地总表写入与校验
         if total_data:
             total_data_path = os.path.join(ROOT_DIR, f"total_metrics_{current_date_str}.json")
             with open(total_data_path, "w", encoding="utf-8") as f:
@@ -553,7 +555,6 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
         else:
             print("无有效数据，本地总表文件未生成")
 
-        # 完整性校验
         print(f"\n===== 数据处理结果校验 =====")
         print(f"本地总表数据量：{len(total_data)} 条")
         if es_handler:
@@ -562,7 +563,6 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
 
     except Exception as e:
         print(f"全局处理异常：{str(e)}，已保留已处理的总表数据")
-        # 异常时仍尝试保存已收集的总表数据（避免数据丢失）
         if total_data:
             total_data_path = os.path.join(ROOT_DIR, f"total_metrics_{current_date_str}_error.json")
             with open(total_data_path, "w", encoding="utf-8") as f:
@@ -572,22 +572,18 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
     print(f"=== 处理完成！===")
     return total_data
 
-
 # ---------------------- 函数调用（主入口） ----------------------
 if __name__ == "__main__":
-    # 创建参数解析器
     parser = argparse.ArgumentParser(description="传入目标日期（格式：YYYYMMDD）")
 
-    # 添加 target_date 参数：
     parser.add_argument(
-        "target_date",  # 参数名（命令行传参时直接跟值，不用加前缀）
-        nargs="?",  # 允许参数可选（没传时用默认值）
+        "target_date",
+        nargs="?",
         default=None,
         help="目标日期，格式为 YYYYMMDD（例如 20251023，默认：20251022）"
     )
 
     args = parser.parse_args()
 
-    # 调用函数时，使用解析后的参数（args.target_date）
     generate_metrics_data(target_date=args.target_date)
 
