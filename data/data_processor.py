@@ -227,12 +227,13 @@ def create_metrics_data(
     json_metrics["device"] = "Ascend910B3"
     json_metrics["status"] = "normal"
     json_metrics["engine_version"] = '0'
+    request_rate = json_metrics["request_rate"]
 
     # 合并指标（生成 Metric 对象后转为字典，确保字段完整）
     full_metrics_dict = merge_metrics(csv_metrics, json_metrics)
 
-    # 生成复合ID（保留原逻辑：commit_id + model_name，确保唯一）
-    composite_id = f"{commit_id}_{model_name}"
+    # 生成复合ID（保留原逻辑：commit_id + request_rate + model_name，确保唯一）
+    composite_id = f"{commit_id}_{model_name}_{request_rate}"
 
     # 整合 PR 信息与指标（source 包含 PR 字段 + 完整 Metric 字段）
     source = {
@@ -481,7 +482,7 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
             print(f"\n===== 处理 commit_id：{commit_id} =====")
             try:
                 # 遍历commit_id
-                commit_dir_full = os.path.join(ROOT_DIR, commit_id)
+                commit_dir_full = os.path.join(ROOT_DIR, current_date_str, commit_id)
                 request_rate_dirs = get_subdir_names(commit_dir_full)
 
                 if not request_rate_dirs:
