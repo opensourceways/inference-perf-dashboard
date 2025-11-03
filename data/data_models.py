@@ -39,5 +39,6 @@ class PRInfo:
     commit_id: str
     pr_title: str
     merged_at: str
+    device: str
     sglang_branch: str = None
 

@@ -162,7 +162,7 @@ def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
     except json.JSONDecodeError as e:
         raise ValueError(f"PR JSON格式错误（解析失败）: {pr_json_path}，详情：{str(e)}")
 
-    required_fields = {"pr_id", "commit_id", "pr_title", "merged_at", "sglang_branch"}
+    required_fields = {"pr_id", "commit_id", "pr_title", "merged_at", "sglang_branch", "device"}
     # 获取JSON中实际存在的字段
     actual_fields = set(pr_data.keys())
     # 检查缺失的必填字段
@@ -188,7 +188,8 @@ def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
         commit_id=pr_data["commit_id"].strip(),
         pr_title=pr_data["pr_title"].strip(),
         merged_at=merged_at,
-        sglang_branch=pr_data["sglang_branch"].strip()
+        sglang_branch=pr_data["sglang_branch"].strip(),
+        device=pr_data["device"].strip()
     )
 
     return pr_info, pr_data["commit_id"].strip()
@@ -224,10 +225,9 @@ def create_metrics_data(
     json_metrics = parse_metrics_json(metrics_json_path, stage)
 
     json_metrics["model_name"] = model_name
-    json_metrics["device"] = "Ascend910B3"
     json_metrics["status"] = "normal"
     json_metrics["engine_version"] = '0'
-    request_rate = json_metrics["request_rate"]
+    request_rate = int(json_metrics["request_rate"])
 
     # 合并指标（生成 Metric 对象后转为字典，确保字段完整）
     full_metrics_dict = merge_metrics(csv_metrics, json_metrics)
