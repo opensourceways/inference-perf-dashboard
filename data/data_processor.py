@@ -110,7 +110,9 @@ def parse_metrics_json(json_path: str, stage: str = "total") -> Dict[str, Any]:
         "Total generated tokens": "total_generated_tokens",
         "Input Token Throughput": "input_token_throughput",
         "Output Token Throughput": "output_token_throughput",
-        "Total Token Throughput": "total_token_throughput"
+        "Total Token Throughput": "total_token_throughput",
+        "tp": "tp",
+        "request_rate": "request_rate"
     }
     metric_field_names = {field.name for field in Metric.__dataclass_fields__.values()}
     json_metrics = {}
@@ -225,8 +227,6 @@ def create_metrics_data(
     json_metrics["model_name"] = model_name
     json_metrics["device"] = "Ascend910B3"
     json_metrics["status"] = "normal"
-    json_metrics["request_rate"] = 10
-    json_metrics["tp"] = 16
     json_metrics["engine_version"] = '0'
 
     # 合并指标（生成 Metric 对象后转为字典，确保字段完整）

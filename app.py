@@ -171,7 +171,7 @@ def get_server_commits_list():
     )()
 
 
-@app.route("/server/data-detail-compare/list", methods=["GET"])
+@app.route("/server/data-details-compare/list", methods=["GET"])
 def get_server_model_list():
     return es_api_handler(
         adjust_params=adjust_model_list_params,
