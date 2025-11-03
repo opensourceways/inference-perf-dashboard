@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 import argparse
 import pandas as pd
@@ -336,7 +337,7 @@ def get_dynamic_paths(date_str: str = None, commit_id: str = None) -> tuple[str,
         raise Exception(f"获取动态路径失败：{str(e)}")
 
 
-def check_model_files(current_date_str: str, commit_id: str, model_name: str) -> Tuple[bool, List[str], Dict[str, str]]:
+def check_model_files(current_date_str: str, commit_id: str, model_name: str, request_rate):
     """
     校验当前模型的CSV、指标JSON、PR JSON文件是否存在
     参数:
@@ -350,8 +351,8 @@ def check_model_files(current_date_str: str, commit_id: str, model_name: str) ->
     """
     # 构建3个关键文件的路径
     file_paths = {
-        "csv_path": os.path.join(ROOT_DIR, current_date_str, commit_id, model_name, METRIC_CSV_DIR),
-        "metrics_json_path": os.path.join(ROOT_DIR, current_date_str, commit_id, model_name, METRIC_JSON_DIR),
+        "csv_path": os.path.join(ROOT_DIR, current_date_str, commit_id, model_name, request_rate, METRIC_CSV_DIR),
+        "metrics_json_path": os.path.join(ROOT_DIR, current_date_str, commit_id, model_name, request_rate, METRIC_JSON_DIR),
         "pr_json_path": os.path.join(ROOT_DIR, current_date_str, commit_id, PR_INFO_DIR)
     }
 
@@ -393,7 +394,7 @@ def generate_single_model_data(model_name: str, file_paths: Dict[str, str]) -> D
         raise Exception(f"数据生成失败：{str(e)}")
 
 
-def write_model_data_to_file(current_date_str: str, commit_id: str, model_name: str, current_data: Dict[str, Any]) -> None:
+def write_model_data_to_file(current_date_str: str, commit_id: str, model_name: str, request_rate, current_data: Dict[str, Any]) -> None:
     """
     处理模型数据的写入，含去重逻辑（ID存在则跳过，否则写入）
     参数:
@@ -404,7 +405,7 @@ def write_model_data_to_file(current_date_str: str, commit_id: str, model_name: 
     # 准备输出路径和文件名
     output_root_dir = "output"
     os.makedirs(output_root_dir, exist_ok=True)  # 确保目录存在
-    output_filename = f"{current_date_str}_{commit_id}_{model_name}.json"
+    output_filename = f"{current_date_str}_{commit_id}_{model_name}_{request_rate}.json"
     output_file = os.path.join(output_root_dir, output_filename)
 
     # 去重判断
@@ -591,73 +592,76 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
                     commit_id_grouped[commit_id] = []
                     continue
 
-                # 遍历当前commit下的每个模型（处理模型-commit_id组合）
+                request_rate_dirs = get_subdir_names(commit_dir_full)
+                # 遍历当前commit下的每个模型,每个模型下的每个request_rate）
                 for model_name in model_names:
-                    print(f"--- 处理 模型-commit组合：{model_name}@{commit_id} ---")
-                    # 记录组合（用于后续校验）
-                    pair_key = f"{model_name}@{commit_id}"
-                    if pair_key in model_commit_pairs:
-                        print(f"模型-commit组合 {pair_key} 已处理，跳过重复数据")
-                        continue
 
-                    # 校验模型所需文件（确保文件齐全）
-                    is_file_valid, missing_files, file_paths = check_model_files(
-                        current_date_str, commit_id, model_name
-                    )
-                    if not is_file_valid:
-                        print(f"组合 {pair_key} 跳过：缺少文件 → {', '.join(missing_files)}")
-                        continue
+                    for request_rate in request_rate_dirs:
+                        print(f"--- 处理 模型-commit组合：{model_name}@{commit_id}@{request_rate} ---")
+                        # 记录组合（用于后续校验）
+                        pair_key = f"{model_name}@{commit_id}@{request_rate}"
+                        if pair_key in model_commit_pairs:
+                            print(f"模型-commit组合 {pair_key} 已处理，跳过重复数据")
+                            continue
 
-                    es_handler, es_index_name = es_operation.init_es_handler()
-                    # 生成单个模型数据
-                    try:
-                        current_data = generate_single_model_data(model_name, file_paths)
-                        if not current_data or "ID" not in current_data:
-                            raise ValueError("生成的模型数据为空或缺少必填字段'ID'")
+                        # 校验模型所需文件（确保文件齐全）
+                        is_file_valid, missing_files, file_paths = check_model_files(
+                            current_date_str, commit_id, model_name, request_rate
+                        )
+                        if not is_file_valid:
+                            print(f"组合 {pair_key} 跳过：缺少文件 → {', '.join(missing_files)}")
+                            continue
 
-                        # 将性能数据写入到ES数据库
-                        if es_handler:  # 仅当 ESHandler 初始化成功时执行
-                            print(f"开始将组合 {pair_key} 写入 ES（ID：{current_data['ID']}）")
-                            # 调用 ESHandler.add_data：索引名 + doc_id（用current_data["ID"]） + 数据
-                            es_write_success = es_handler.add_data(
-                                index_name=es_index_name,
-                                doc_id=current_data["ID"],  # 用数据自带的ID作为ES文档ID，避免重复
-                                data=current_data
-                            )
-                            if es_write_success:
-                                print(f"组合 {pair_key} 写入 ES 成功")
+                        es_handler, es_index_name = es_operation.init_es_handler()
+                        # 生成单个模型数据
+                        try:
+                            current_data = generate_single_model_data(model_name, file_paths)
+                            if not current_data or "ID" not in current_data:
+                                raise ValueError("生成的模型数据为空或缺少必填字段'ID'")
+
+                            # 将性能数据写入到ES数据库
+                            if es_handler:  # 仅当 ESHandler 初始化成功时执行
+                                print(f"开始将组合 {pair_key} 写入 ES（ID：{current_data['ID']}）")
+                                # 调用 ESHandler.add_data：索引名 + doc_id（用current_data["ID"]） + 数据
+                                es_write_success = es_handler.add_data(
+                                    index_name=es_index_name,
+                                    doc_id=current_data["ID"],  # 用数据自带的ID作为ES文档ID，避免重复
+                                    data=current_data
+                                )
+                                if es_write_success:
+                                    print(f"组合 {pair_key} 写入 ES 成功")
+                                else:
+                                    print(f"组合 {pair_key} 写入 ES 失败（数据已生成但未同步到ES）")
                             else:
-                                print(f"组合 {pair_key} 写入 ES 失败（数据已生成但未同步到ES）")
-                        else:
-                            print(f"ESHandler 未初始化，组合 {pair_key} 未写入 ES")
+                                print(f"ESHandler 未初始化，组合 {pair_key} 未写入 ES")
 
-                        # 写入【模型-commit_id组合文件】（单文件，确保组合数据存在）
-                        write_model_data_to_file(current_date_str, commit_id, model_name, current_data)
-                        print(f"组合 {pair_key} 单文件写入成功")
+                            # 写入【模型-commit_id组合文件】（单文件，确保组合数据存在）
+                            write_model_data_to_file(current_date_str, commit_id, model_name, request_rate, current_data)
+                            print(f"组合 {pair_key} 单文件写入成功")
 
-                        # 收集多维度聚合数据（去重后加入）
-                        # - 总表去重
-                        if ensure_unique_id(total_data, current_data, total_existing_ids):
-                            print(f"组合 {pair_key} 加入总表（去重后总表共{len(total_data)}条）")
-                            # - commit_id维度去重（当前commit）
-                            if ensure_unique_id(
-                                commit_id_grouped[commit_id], current_data, commit_existing_ids[commit_id]
-                            ):
-                                print(f"组合 {pair_key} 加入commit_id={commit_id}分组（共{len(commit_id_grouped[commit_id])}条）")
-                                # - 日期维度去重（当前日期）
+                            # 收集多维度聚合数据（去重后加入）
+                            # - 总表去重
+                            if ensure_unique_id(total_data, current_data, total_existing_ids):
+                                print(f"组合 {pair_key} 加入总表（去重后总表共{len(total_data)}条）")
+                                # - commit_id维度去重（当前commit）
                                 if ensure_unique_id(
-                                    date_grouped[current_date_str], current_data, date_existing_ids[current_date_str]
+                                    commit_id_grouped[commit_id], current_data, commit_existing_ids[commit_id]
                                 ):
-                                    print(f"组合 {pair_key} 加入日期={current_date_str}分组（共{len(date_grouped[current_date_str])}条）")
+                                    print(f"组合 {pair_key} 加入commit_id={commit_id}分组（共{len(commit_id_grouped[commit_id])}条）")
+                                    # - 日期维度去重（当前日期）
+                                    if ensure_unique_id(
+                                        date_grouped[current_date_str], current_data, date_existing_ids[current_date_str]
+                                    ):
+                                        print(f"组合 {pair_key} 加入日期={current_date_str}分组（共{len(date_grouped[current_date_str])}条）")
 
-                        # 标记组合已处理
-                        model_commit_pairs.add(pair_key)
-                        all_valid_metrics.append(current_data)
-                        print(f"组合 {pair_key} 全维度数据处理完成")
+                            # 标记组合已处理
+                            model_commit_pairs.add(pair_key)
+                            all_valid_metrics.append(current_data)
+                            print(f"组合 {pair_key} 全维度数据处理完成")
 
-                    except Exception as e:
-                        print(f"组合 {pair_key} 数据生成失败：{str(e)}")
-                        continue
+                        except Exception as e:
+                            print(f"组合 {pair_key} 数据生成失败：{str(e)}")
+                            continue
 
             except Exception as e:
                 print(f"commit_id {commit_id} 处理异常：{str(e)}，继续处理下一个commit")
