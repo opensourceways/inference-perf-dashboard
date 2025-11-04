@@ -1,14 +1,16 @@
+from config import logger_config
 from es_command import es_operation
 
+logger = logger_config.get_logger(__name__)
 
 if __name__ == "__main__":
     # 初始化ESHandler实例
     es_handler, es_index_name = es_operation.init_es_handler()
 
-    # 1. 创建索引（使用默认映射）
+    # 创建索引（使用默认映射）
     es_handler.create_index(es_index_name)
 
-    # 2. 准备测试数据
+    # 准备测试数据
     test_data = {
         "ID": "la2b3c4d_Qwen3-32B",
         "source": {
@@ -42,28 +44,28 @@ if __name__ == "__main__":
     }
     doc_id = test_data["ID"]
 
-    # 3. 添加数据
+    # 添加数据
     es_handler.add_data(es_index_name, doc_id, test_data)
 
-    # 4. 检查ID是否存在
-    print(f"ID存在性检查：{es_handler.check_id_exists(es_index_name, doc_id)}")
+    # 检查ID是否存在
+    logger.info(f"ID存在性检查：{es_handler.check_id_exists(es_index_name, doc_id)}")
 
-    # 5. 查询数据
+    # 查询数据
     data = es_handler.get_data(es_index_name, doc_id)
     if data:
-        print("查询到的数据：", data)
+        logger.info("查询到的数据：", data)
 
-    # 6. 修改数据（示例：更新mean_e2e1_ms字段）
+    # 修改数据（示例：更新mean_e2e1_ms字段）
     es_handler.update_data(
         index_name=es_index_name,
         doc_id=doc_id,
-        update_fields={"source.mean_e2e1_ms": 3000.0}  # 只更新指定字段
+        update_fields={"source.mean_e2e1_ms": 3000.0}
     )
 
-    # 7. 再次查询，验证修改结果
+    # 再次查询，验证修改结果
     updated_data = es_handler.get_data(es_index_name, doc_id)
     if updated_data:
-        print("修改后的数据（mean_e2e1_ms）：", updated_data["source"]["mean_e2e1_ms"])
+        logger.info("修改后的数据（mean_e2e1_ms）：", updated_data["source"]["mean_e2e1_ms"])
 
-    # 8. 删除数据
+    # 删除数据
     # es_handler.delete_data(ES_CONFIG["index_name"], doc_id)
