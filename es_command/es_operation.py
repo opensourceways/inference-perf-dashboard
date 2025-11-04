@@ -20,7 +20,7 @@ class ESHandler:
         :param es_url: ES服务地址（如 "https://localhost:9200"）
         :param username: 登录用户名（默认 "elastic"）
         :param token: 登录密码
-        :param verify_certs: 是否验证SSL证书
+        :param ssl_context: 是否验证SSL证书
         """
         self.es = Elasticsearch(
             hosts=[es_url],
@@ -74,7 +74,7 @@ class ESHandler:
             return False
 
 
-    def check_id_exists(self, index_name: str, doc_id: str) -> bool:
+    def check_id_exists(self, index_name: str, doc_id: str):
         """
         检查文档ID是否存在
         :param index_name: 索引名称
@@ -197,7 +197,7 @@ class ESHandler:
             query: Dict,
             size: int = 10000,
             sort = None
-    ) -> Dict[str, any]:
+    ):
         """
         执行批量查询（支持条件筛选）
         :param index_name: 索引名称

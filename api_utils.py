@@ -151,7 +151,7 @@ def process_es_commit_response(es_response) -> Dict[str, List[Dict]]:
     return result
 
 
-def _safe_get(es_source: Dict, key: str, default: Optional[any] = None) -> any:
+def _safe_get(es_source: Dict, key: str, default: Optional[any] = None):
     """
     安全从ES source中取值（避免KeyError，处理空值）
     :param es_source: ES的_source.source字典
