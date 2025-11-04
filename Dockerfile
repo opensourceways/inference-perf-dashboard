@@ -35,5 +35,5 @@ RUN chown -R appuser:appgroup /app
 EXPOSE 5000
 ENV TZ=Asia/Shanghai
 
-# USER appuser
+USER appuser
 CMD ["sh", "-c", "python /app/scheduler.py & gunicorn --bind 0.0.0.0:5000 app:app & wait"]
