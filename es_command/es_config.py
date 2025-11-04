@@ -3,7 +3,6 @@ from typing import Dict
 
 class MetricMapping:
     """模型性能数据的ES映射管理类"""
-    # 默认映射（适配模型性能数据结构）
     DEFAULT_MAPPINGS = {
         "properties": {
             "ID": {"type": "keyword"},

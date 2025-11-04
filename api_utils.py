@@ -1,10 +1,12 @@
-import logging
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Callable
 
 import pandas as pd
-from typing import Dict, List, Optional, Tuple, Any, Callable
 
-logger = logging.getLogger(__name__)
+from config import logger_config
+
+logger = logger_config.get_logger(__name__)
+
 ES_MAX_RESULT_SIZE = 10000
 
 
@@ -29,7 +31,7 @@ def check_input_params(params: Dict) -> Tuple[bool, str, Optional[Dict]]:
         return False, f"缺失必填参数：{','.join(missing)}", None
 
     models_list = [m.strip() for m in params["models"].split(",") if m.strip()]
-    if not models_list:  # 拆分后为空（如models=",,"）
+    if not models_list:
         return False, "models参数不可为空（或仅含分隔符）", None
 
     processed_params = {
@@ -82,7 +84,6 @@ def build_es_query(
     if start_time or end_time:
         time_range = {}
         if start_time:
-            # 转换时间戳为 ES 日期格式（start_time 是秒级时间戳）
             start_date = pd.Timestamp(start_time, unit="s").strftime("%Y-%m-%dT%H:%M:%S")
             time_range["gte"] = start_date
         if end_time:
@@ -92,7 +93,6 @@ def build_es_query(
             "range": {"source.merged_at": time_range}
         })
 
-    # 若没有筛选条件，默认匹配所有
     return query if query["bool"]["must"] else {"match_all": {}}
 
 
@@ -117,7 +117,6 @@ def process_es_commit_response(es_response) -> Dict[str, List[Dict]]:
             merged_at_dt = pd.to_datetime(record["merged_at"], errors="coerce")
             if pd.isna(merged_at_dt):
                 raise ValueError("无法解析时间格式")
-            # 转换为秒级时间戳
             time_stamp = int((merged_at_dt - pd.Timestamp("1970-01-01")) // pd.Timedelta("1s"))
             processed.append({
                 "model_name": record["model_name"],
@@ -132,17 +131,14 @@ def process_es_commit_response(es_response) -> Dict[str, List[Dict]]:
 
     # 按模型分组+去重
     result: Dict[str, List[Dict]] = {}
-    seen_pairs: Dict[str, set] = {}  # 存储每个模型下已出现的 (hash, time) 对：{model: {(hash1, time1), (hash2, time2), ...}}
+    seen_pairs: Dict[str, set] = {}
 
     for item in processed:
         model = item["model_name"]
-        # 初始化模型分组和去重集合
         if model not in result:
             result[model] = []
             seen_pairs[model] = set()
-        # 生成去重标识（hash+time的元组）
         pair = (item["hash"], item["time"])
-        # 若未出现过，则添加到结果
         if pair not in seen_pairs[model]:
             seen_pairs[model].add(pair)
             result[model].append({
@@ -155,7 +151,7 @@ def process_es_commit_response(es_response) -> Dict[str, List[Dict]]:
     return result
 
 
-def _safe_get(es_source: Dict, key: str, default: Optional[any] = None) -> any:
+def _safe_get(es_source: Dict, key: str, default: Optional[any] = None):
     """
     安全从ES source中取值（避免KeyError，处理空值）
     :param es_source: ES的_source.source字典
@@ -182,7 +178,7 @@ def _convert_ms_to_s(ms_value: Optional[float], default: Optional[float] = None)
 
 def _convert_datetime_to_timestamp(datetime_str: Optional[str], fmt: str = "%Y-%m-%dT%H:%M:%S") -> Optional[int]:
     """
-    ES日期字符串转秒级时间戳（处理格式异常）
+    ES日期字符串转秒级时间戳
     :param datetime_str: ES中的日期字符串（如2025-10-22T15:20:00）
     :param fmt: 日期格式
     :return: 时间戳或None
@@ -215,13 +211,11 @@ def _process_es_response(
     批量处理ES响应（提取hits+调用映射函数）
     :param es_response: ES原始响应
     :param mapping_func: 单条数据的映射函数（如map_es_to_response）
-    :return: 接口响应列表（无数据返回空列表）
+    :return: 接口响应列表
     """
-    # 提取ES hits（防御性处理字段缺失）
     es_hits = es_response.get("hits", {}).get("hits", [])
     if not es_hits:
         return []
-    # 批量调用映射函数
     return [
         mapping_func(hit.get("_source", {}).get("source", {}))
         for hit in es_hits
@@ -229,8 +223,7 @@ def _process_es_response(
 
 
 def map_es_to_response(es_source: Dict) -> Dict:
-    # 确定相同key值字段的冗余
-    """模型列表接口：ES数据→接口格式映射（仅保留差异化字段）"""
+    """模型列表接口：ES数据→接口格式映射"""
     return {
         "device": _safe_get(es_source, "device"),
         "latency_s": f"{_convert_ms_to_s(_safe_get(es_source, 'mean_e2el_ms'), 0.0):.2f}→"

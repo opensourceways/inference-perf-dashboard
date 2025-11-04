@@ -1,13 +1,17 @@
 import argparse
-import pandas as pd
 import json
 import os
+from dataclasses import asdict, fields
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Tuple, DefaultDict, Set
-from dataclasses import asdict
+from typing import Dict, Any, List, Tuple, Set
 
+import pandas as pd
+
+from config import logger_config
 from data.data_models import Metric, PRInfo
 from es_command import es_operation
+
+logger = logger_config.get_logger(__name__)
 
 ROOT_DIR = os.path.expanduser("/data/ascend-ci-share-pkking-sglang/aisbench")
 METRIC_CSV_DIR = "gsm8kdataset.csv"
@@ -15,7 +19,7 @@ METRIC_JSON_DIR = "gsm8kdataset.json"
 PR_INFO_DIR = 'pr.json'
 
 def parse_metrics_csv(csv_path: str, stage: str = "total") -> Dict[str, float | int]:
-    """解析性能CSV，返回Metric类所需字段（匹配类定义，含延迟/总token数）"""
+    """解析性能CSV，返回Metric类所需字段"""
     # 读取CSV并按stage过滤
     try:
         df = pd.read_csv(csv_path)
@@ -59,7 +63,7 @@ def parse_metrics_csv(csv_path: str, stage: str = "total") -> Dict[str, float | 
     }
 
     # 获取Metric类的有效字段（避免生成类中不存在的字段）
-    metric_fields = {f.name for f in Metric.__dataclass_fields__.values()}
+    metric_fields = {field.name for field in fields(Metric)}
     parsed_data: Dict[str, float | int] = {}
 
     # 按映射解析CSV数据
@@ -92,7 +96,7 @@ def parse_metrics_csv(csv_path: str, stage: str = "total") -> Dict[str, float | 
 
 
 def parse_metrics_json(json_path: str, stage: str = "total") -> Dict[str, Any]:
-    """解析JSON，返回 Metric 类所需的“并发/吞吐量”字段（按类字段类型自动转换）"""
+    """解析JSON，返回 Metric 类所需的“并发/吞吐量”字段"""
     try:
         with open(json_path, "r", encoding="utf-8") as f:
             json_data = json.load(f)
@@ -113,7 +117,7 @@ def parse_metrics_json(json_path: str, stage: str = "total") -> Dict[str, Any]:
         "tp": "tp",
         "request_rate": "request_rate"
     }
-    metric_field_names = {field.name for field in Metric.__dataclass_fields__.values()}
+    metric_field_names = {field.name for field in fields(Metric)}
     json_metrics = {}
 
     for json_key, metric_key in json_to_metric_map.items():
@@ -129,7 +133,8 @@ def parse_metrics_json(json_path: str, stage: str = "total") -> Dict[str, Any]:
             cleaned_value = raw_value
 
         # 按 Metric 类字段的类型转换值（确保类型匹配，如int/float）
-        metric_field_type = Metric.__dataclass_fields__[metric_key].type
+        fields_type_mapping = {field.name: field.type for field in fields(Metric)}
+        metric_field_type = fields_type_mapping[metric_key]
         try:
             json_metrics[metric_key] = metric_field_type(cleaned_value)
         except (ValueError, TypeError):
@@ -154,7 +159,6 @@ def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
     try:
         with open(pr_json_path, "r", encoding="utf-8") as f:
             pr_data = json.load(f)
-            # 确保JSON是字典格式（避免数组等非预期格式）
             if not isinstance(pr_data, dict):
                 raise ValueError(f"PR JSON格式错误：应为字典，实际为{type(pr_data).__name__}")
     except FileNotFoundError:
@@ -163,9 +167,7 @@ def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
         raise ValueError(f"PR JSON格式错误（解析失败）: {pr_json_path}，详情：{str(e)}")
 
     required_fields = {"pr_id", "commit_id", "pr_title", "merged_at", "sglang_branch", "device"}
-    # 获取JSON中实际存在的字段
     actual_fields = set(pr_data.keys())
-    # 检查缺失的必填字段
     missing_fields = required_fields - actual_fields
     if missing_fields:
         raise ValueError(f"PR JSON缺少必填字段: {sorted(missing_fields)}（需包含{required_fields}）")
@@ -176,7 +178,6 @@ def parse_pr_json(pr_json_path: str) -> Tuple[PRInfo, str]:
 
     merged_at = pr_data["merged_at"].strip()
     try:
-        # 仅校验格式，不转换（确保输入即符合目标格式）
         datetime.strptime(merged_at, "%Y-%m-%dT%H:%M:%S")
     except ValueError:
         raise ValueError(
@@ -199,15 +200,14 @@ def merge_metrics(csv_metrics: Dict[str, float], json_metrics: Dict[str, Any]) -
     """合并CSV和JSON指标，先生成 Metric 对象（确保字段完整），再转为字典"""
     # 合并所有指标字段
     all_metric_fields = {**csv_metrics, **json_metrics}
-    # 校验：确保覆盖 Metric 类的所有字段（核心！避免扩展字段漏解析）
-    metric_required_fields = [field.name for field in Metric.__dataclass_fields__.values()]
+    # 校验：确保覆盖 Metric 类的所有字段
+    metric_required_fields = [field.name for field in fields(Metric)]
     missing_fields = [f for f in metric_required_fields if f not in all_metric_fields]
     if missing_fields:
         raise ValueError(f"合并指标缺失 Metric 必需字段：{missing_fields}")
 
-    # 生成 Metric 对象（强类型校验，确保数据合法）
+    # 生成 Metric 对象
     metric_obj = Metric(**all_metric_fields)
-    # 转为字典（用于后续与 PR 信息整合）
     return asdict(metric_obj)
 
 
@@ -219,7 +219,7 @@ def create_metrics_data(
         stage: str = "total"
 ) -> Dict[str, Dict]:
     """生成目标格式数据：整合 PRInfo + Metric（基于 Metric 类确保指标完整）"""
-    # 解析基础数据（PR信息 + 分源指标）
+    # 解析基础数据
     pr_info, commit_id = parse_pr_json(pr_json_path)
     csv_metrics = parse_metrics_csv(csv_path, stage)
     json_metrics = parse_metrics_json(metrics_json_path, stage)
@@ -229,19 +229,18 @@ def create_metrics_data(
     json_metrics["engine_version"] = '0'
     request_rate = int(json_metrics["request_rate"])
 
-    # 合并指标（生成 Metric 对象后转为字典，确保字段完整）
+    # 合并指标
     full_metrics_dict = merge_metrics(csv_metrics, json_metrics)
 
-    # 生成复合ID（保留原逻辑：commit_id + request_rate + model_name，确保唯一）
+    # 生成复合ID
     composite_id = f"{commit_id}_{model_name}_{request_rate}"
 
-    # 整合 PR 信息与指标（source 包含 PR 字段 + 完整 Metric 字段）
+    # 整合 PR 信息与指标
     source = {
         **asdict(pr_info),  # PRInfo 转为字典
         **full_metrics_dict  # 完整 Metric 字段
     }
 
-    # 返回目标格式
     return {
         "ID": composite_id,
         "source": source
@@ -269,7 +268,7 @@ def batch_create_metrics_data(model_configs: List[Dict[str, str]]) -> List[Dict[
             )
             metrics_data_list.append(single_model_data)
         except Exception as e:
-            print(f"处理模型 {config['model_name']} 失败: {str(e)}")
+            logger.error(f"处理模型 {config['model_name']} 失败: {str(e)}")
             continue
 
     return metrics_data_list
@@ -289,28 +288,22 @@ def get_subdir_names(dir_path: str) -> List[str]:
 
 def get_date_str(date_str: str = None) -> str:
     """
-    根据传入的日期字符串生成数据目录路径，默认使用当前日期
-
+    根据传入的日期字符串生成数据目录路径，默认使用T+1日期
     参数:
-        date_str: 可选，指定日期（格式：YYYYMMDD，如"20251022"）
-                  若为None，则自动使用T+1日期
-
+        date_str: 可选，指定日期（格式：YYYYMMDD，如"20251022"）若为None，则自动使用T+1日期
     返回:
         tuple: (current_date_str: 日期字符串（YYYYMMDD）
     """
-    # 确定日期字符串：优先使用传入的date_str，否则用当前日期
     if date_str:
         # 校验传入的日期格式是否正确（YYYYMMDD）
         try:
-            # 尝试解析为日期对象，验证格式有效性
             datetime.strptime(date_str, "%Y%m%d")
             current_date_str = date_str
             return current_date_str
         except ValueError:
             raise ValueError(f"传入的date_str格式错误，应为YYYYMMDD，实际为：{date_str}")
     else:
-        # 无传入日期时，使用当前日期的前一天（昨天），格式化为YYYYMMDD
-        yesterday = datetime.now().date() - timedelta(days=1)  # 核心修改：当前日期减1天
+        yesterday = datetime.now().date() - timedelta(days=1)
         current_date_str = yesterday.strftime("%Y%m%d")
         return current_date_str
 
@@ -367,7 +360,7 @@ def generate_single_model_data(model_name: str, file_paths: Dict[str, str]) -> D
         model_metrics = batch_create_metrics_data(model_config)
         if not model_metrics:
             raise Exception("无有效数据生成")
-        return model_metrics[0]  # 单个模型仅1条数据
+        return model_metrics[0]
     except Exception as e:
         raise Exception(f"数据生成失败：{str(e)}")
 
@@ -379,23 +372,21 @@ def _check_existing_id(output_file: str, current_data: Dict[str, Any]) -> bool:
         with open(output_file, "r", encoding="utf-8") as f:
             existing_data = json.load(f)
 
-        # 提取已有ID
         existing_id = _extract_id_from_data(existing_data, "已有文件")
-        # 提取当前数据ID
         current_id = _extract_id_from_data(current_data, "当前数据")
 
         # 对比ID
         if existing_id == current_id:
             return True
         else:
-            print(f"模型ID不匹配（已有：{existing_id}，当前：{current_id}），将覆盖文件")
+            logger.warning(f"模型ID不匹配（已有：{existing_id}，当前：{current_id}），将覆盖文件")
             return False
 
     except json.JSONDecodeError:
-        print(f"已有文件格式错误（非标准JSON），将覆盖文件")
+        logger.warning(f"已有文件格式错误（非标准JSON），将覆盖文件")
         return False
     except Exception as e:
-        print(f"校验ID时出错：{str(e)}，将覆盖文件")
+        logger.warning(f"校验ID时出错：{str(e)}，将覆盖文件")
         return False
 
 
@@ -430,17 +421,14 @@ def ensure_unique_id(
     返回:
         bool: 新数据是否成功添加（True=添加，False=重复跳过）
     """
-    # 提取新数据的ID（确保ID字段存在）
     new_id = new_item.get("ID")
     if not new_id:
         raise ValueError("待添加的数据缺少'ID'字段，无法进行唯一性校验")
 
-    # 检查ID是否已存在
     if new_id in existing_ids:
-        print(f"发现重复ID：{new_id}，已跳过该数据")
+        logger.info(f"发现重复ID：{new_id}，已跳过该数据")
         return False
     else:
-        # 新增数据，更新列表和ID集合
         target_list.append(new_item)
         existing_ids.add(new_id)
         return True
@@ -456,48 +444,48 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
     es_fail_count: int = 0  # 统计ES写入失败次数
     all_valid_metrics: List[Dict[str, Any]] = []
 
-    print(f"=== 开始生成metrics数据（目标日期：{target_date}）===")
+    logger.info(f"=== 开始生成metrics数据（目标日期：{target_date}）===")
     try:
         current_date_str = get_date_str(target_date)
         date_dir_full = os.path.join(ROOT_DIR, current_date_str)
         commit_ids = get_subdir_names(date_dir_full)
 
         if not commit_ids:
-            print(f"日期目录 {date_dir_full} 下无commit_id子目录，终止处理")
+            logger.info(f"日期目录 {date_dir_full} 下无commit_id子目录，终止处理")
             return total_data
 
         # ES初始化
         es_handler, es_index_name = es_operation.init_es_handler()
         if es_handler:
-            print(f"ES连接初始化成功，索引：{es_index_name}")
+            logger.info(f"ES连接初始化成功，索引：{es_index_name}")
         else:
-            print("ES连接初始化失败，仅保留本地总表数据")
+            logger.info("ES连接初始化失败，仅保留本地总表数据")
 
         # 遍历顺序为commit_id → model_name → request_rate
         for commit_id in commit_ids:
-            print(f"===== 处理 commit_id：{commit_id} =====")
+            logger.info(f"===== 处理 commit_id：{commit_id} =====")
             try:
                 # 遍历commit_id目录
                 commit_dir_full = os.path.join(date_dir_full, commit_id)
                 model_names = get_subdir_names(commit_dir_full)
 
                 if not model_names:
-                    print(f"commit_id {commit_id} 下无model_name子目录，跳过")
+                    logger.info(f"commit_id {commit_id} 下无model_name子目录，跳过")
                     continue
 
                 # 遍历model_name
                 for model_name in model_names:
-                    print(f"----- 处理 model_name：{model_name}（commit：{commit_id}）-----")
+                    logger.info(f"----- 处理 model_name：{model_name}（commit：{commit_id}）-----")
                     model_dir_full = os.path.join(commit_dir_full, model_name)
                     request_rate_dirs = get_subdir_names(model_dir_full)
 
                     if not request_rate_dirs:
-                        print(f"model_name {model_name} 下无request_rate子目录，跳过")
+                        logger.info(f"model_name {model_name} 下无request_rate子目录，跳过")
                         continue
 
                     # 遍历request_rate
                     for request_rate in request_rate_dirs:
-                        print(f"--- 处理 request_rate：{request_rate}（model：{model_name}）---")
+                        logger.info(f"--- 处理 request_rate：{request_rate}（model：{model_name}）---")
 
                         # 文件校验
                         is_file_valid, missing_files, file_paths = check_model_files(
@@ -507,7 +495,7 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
                             request_rate
                         )
                         if not is_file_valid:
-                            print(f"组合 {model_name}@{request_rate} 跳过：缺少文件 → {', '.join(missing_files)}")
+                            logger.info(f"组合 {model_name}@{request_rate} 跳过：缺少文件 → {', '.join(missing_files)}")
                             continue
 
                         # 数据生成与写入
@@ -519,7 +507,7 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
 
                             # ES写入
                             if es_handler:
-                                print(f"正在写入ES：ID={data_id}")
+                                logger.info(f"正在写入ES：ID={data_id}")
                                 es_write_success = es_handler.add_data(
                                     index_name=es_index_name,
                                     doc_id=data_id,
@@ -527,24 +515,24 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
                                 )
                                 if es_write_success:
                                     es_success_count += 1
-                                    print(f"写入成功：ID={data_id}")
+                                    logger.info(f"写入成功：ID={data_id}")
                                 else:
                                     es_fail_count += 1
-                                    print(f"写入失败：ID={data_id}")
+                                    logger.info(f"写入失败：ID={data_id}")
 
                             # 本地总表
                             if ensure_unique_id(total_data, current_data, total_existing_ids):
                                 all_valid_metrics.append(current_data)
-                                print(f"加入本地总表：ID={data_id}（总表当前条数：{len(total_data)}）")
+                                logger.info(f"加入本地总表：ID={data_id}（总表当前条数：{len(total_data)}）")
                             else:
-                                print(f"本地总表已存在该数据：ID={data_id}，跳过")
+                                logger.info(f"本地总表已存在该数据：ID={data_id}，跳过")
 
                         except Exception as e:
-                            print(f"request_rate {request_rate} 处理失败：{str(e)}，继续下一个")
+                            logger.info(f"request_rate {request_rate} 处理失败：{str(e)}，继续下一个")
                             continue
 
             except Exception as e:
-                print(f"commit_id {commit_id} 处理异常：{str(e)}，继续下一个")
+                logger.warning(f"commit_id {commit_id} 处理异常：{str(e)}，继续下一个")
                 continue
 
         # 本地总表写入与校验
@@ -552,25 +540,25 @@ def generate_metrics_data(target_date: str = None) -> List[Dict[str, Any]]:
             total_data_path = os.path.join(ROOT_DIR, f"total_metrics_{current_date_str}.json")
             with open(total_data_path, "w", encoding="utf-8") as f:
                 json.dump(total_data, f, ensure_ascii=False, indent=2)
-            print(f"本地总表数据已保存：{total_data_path}（共{len(total_data)}条）")
+            logger.info(f"本地总表数据已保存：{total_data_path}（共{len(total_data)}条）")
         else:
-            print("无有效数据，本地总表文件未生成")
+            logger.warning("无有效数据，本地总表文件未生成")
 
-        print(f"\n===== 数据处理结果校验 =====")
-        print(f"本地总表数据量：{len(total_data)} 条")
+        logger.info(f"\n===== 数据处理结果校验 =====")
+        logger.info(f"本地总表数据量：{len(total_data)} 条")
         if es_handler:
-            print(f"ES写入成功：{es_success_count} 条，失败：{es_fail_count} 条")
-        print(f"有效数据总量：{len(all_valid_metrics)} 条")
+            logger.info(f"ES写入成功：{es_success_count} 条，失败：{es_fail_count} 条")
+        logger.info(f"有效数据总量：{len(all_valid_metrics)} 条")
 
     except Exception as e:
-        print(f"全局处理异常：{str(e)}，已保留已处理的总表数据")
+        logger.warning(f"全局处理异常：{str(e)}，已保留已处理的总表数据")
         if total_data:
             total_data_path = os.path.join(ROOT_DIR, f"total_metrics_{current_date_str}_error.json")
             with open(total_data_path, "w", encoding="utf-8") as f:
                 json.dump(total_data, f, ensure_ascii=False, indent=2)
-            print(f"异常时已保存部分总表数据：{total_data_path}")
+            logger.info(f"异常时已保存部分总表数据：{total_data_path}")
 
-    print(f"=== 处理完成！===")
+    logger.info(f"=== 处理完成！===")
     return total_data
 
 # ---------------------- 函数调用（主入口） ----------------------

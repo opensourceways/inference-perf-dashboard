@@ -1,11 +1,10 @@
-import logging
 import os
 from typing import Dict, List, Callable, Any
 
+from elasticsearch import exceptions
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
-from elasticsearch import exceptions
-from es_command import es_operation
+
 from api_utils import (
     format_fail,
     check_input_params,
@@ -14,14 +13,10 @@ from api_utils import (
     process_es_model_response,
     process_es_model_detail_response
 )
+from config import logger_config
+from es_command import es_operation
 
-
-# 日志配置
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+logger = logger_config.get_logger(__name__)
 
 # 移除代理环境变量
 for proxy in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
@@ -31,7 +26,7 @@ for proxy in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
 app = Flask(__name__)
 CORS(app)
 
-# 初始化 ESHandler 实例（全局复用，避免重复连接）
+# 初始化 ESHandler 实例
 es_handler, es_index_name = es_operation.init_es_handler()
 
 def es_api_handler(
@@ -43,7 +38,7 @@ def es_api_handler(
     """
     封装ES接口的公共流程，返回具体接口函数 ES连接检查 → 提取参数 → 参数校验 → 调整参数 → 构建查询 → 执行查询 → 处理响应 → 日志 → 返回结果
     """
-    def api_func() -> tuple[Response, int] | Response:
+    def api_func() :
         # ES连接检查
         if not es_handler:
             err_msg = "服务异常：ES连接未就绪"
@@ -85,10 +80,10 @@ def es_api_handler(
                 sort=None
             )
 
-            # 处理响应（不同接口用不同process函数）
+            # 处理响应
             result = process_response(es_response)
 
-            # 格式化日志（不同接口日志内容不同）
+            # 格式化日志
             log_msg = format_log(adjusted_params, result)
             logger.info(log_msg)
 
