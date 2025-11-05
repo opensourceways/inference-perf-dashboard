@@ -9,9 +9,9 @@ from api_utils import (
     format_fail,
     check_input_params,
     build_es_query,
-    process_es_commit_response,
-    process_es_model_response,
-    process_es_model_detail_response
+    process_commit_response,
+    process_data_details_compare_response,
+    process_data_details_response
 )
 from config import logger_config
 from es_command import es_operation
@@ -32,7 +32,7 @@ es_handler, es_index_name = es_operation.init_es_handler()
 def es_api_handler(
     # 差异化逻辑：由具体接口传入
     adjust_params: Callable[[Dict], Dict],  # 调整参数
-    process_response: Callable[[Any], Any],  # 响应处理
+    process_response: Callable[[Any, Dict], Any],  # 响应处理
     format_log: Callable[[Dict, Any], str]   # 日志格式化
 ) -> Callable[[], Response]:
     """
@@ -81,7 +81,7 @@ def es_api_handler(
             )
 
             # 处理响应
-            result = process_response(es_response)
+            result = process_response(es_response, adjusted_params)
 
             # 格式化日志
             log_msg = format_log(adjusted_params, result)
@@ -120,15 +120,15 @@ def format_commit_log(params: Dict, result: Dict) -> str:
     return f"查询完成：模型数={len(result)}，总记录数={sum(len(v) for v in result.values())}"
 
 
-def format_model_list_log(params: Dict, result: List[Dict]) -> str:
-    return (f"模型列表查询完成：返回模型数={len(result)}，查询条件=models={params['model_names']}, "
-            f"engineVersion={params['engineVersion']}")
-
-
-def format_model_detail_log(params: Dict, result: List[Dict]) -> str:
+def format_data_details_compares_log(params: Dict, result: List[Dict]) -> str:
     return (f"模型详情查询完成：返回数据条数={len(result)}，"
             f"查询条件=models={params['model_names']}, engineVersion={params['engineVersion']}, "
             f"时间范围={params['startTime']}~{params['endTime']}")
+
+
+def format_data_details_log(params: Dict, result: List[Dict]) -> str:
+    return (f"模型列表查询完成：返回模型数={len(result)}，查询条件=models={params['model_names']}, "
+            f"engineVersion={params['engineVersion']}")
 
 
 # 路由注册（直接返回es_api_handler结果）
@@ -150,7 +150,7 @@ def health_check():
 def get_server_commits_list():
     return es_api_handler(
         adjust_params=adjust_model_params,
-        process_response=process_es_commit_response,
+        process_response=process_commit_response,
         format_log=format_commit_log
     )()
 
@@ -159,8 +159,8 @@ def get_server_commits_list():
 def get_server_model_list():
     return es_api_handler(
         adjust_params=adjust_model_params,
-        process_response=process_es_model_response,
-        format_log=format_model_list_log
+        process_response=process_data_details_compare_response,
+        format_log=format_data_details_compares_log
     )()
 
 
@@ -168,8 +168,8 @@ def get_server_model_list():
 def get_server_model_detail_list():
     return es_api_handler(
         adjust_params=adjust_model_params,
-        process_response=process_es_model_detail_response,
-        format_log=format_model_detail_log
+        process_response=process_data_details_response,
+        format_log=format_data_details_log
     )()
 
 
