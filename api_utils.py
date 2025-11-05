@@ -96,7 +96,7 @@ def build_es_query(
     return query if query["bool"]["must"] else {"match_all": {}}
 
 
-def process_commit_response(es_response) -> Dict[str, List[Dict]]:
+def process_commit_response(es_response, params):
     """
     处理ES提交列表响应，转换为「模型名→记录列表」格式
     """
@@ -222,10 +222,10 @@ def map_compare_pair_response(old_data: Dict, new_data: Dict) -> Dict:
         return f"{safe_old:.2f}→{safe_new:.2f}"
 
     return {
-        "name": _safe_get(old_data, "model_name") or _safe_get(new_data, "model_name"),  # 取模型名（优先旧数据）
-        "tensor_parallel": _format_pair(_safe_get(old_data, "tp"), _safe_get(new_data, "tp")),
-        "request_rate": _format_pair(_safe_get(old_data, "request_rate"), _safe_get(new_data, "request_rate")),
-        "device": _safe_get(old_data, "device") or _safe_get(new_data, "device"),  # 设备信息（优先旧数据）
+        "name": _safe_get(old_data, "model_name") or _safe_get(new_data, "model_name"),
+        "tensor_parallel": _safe_get(old_data, "tp") or _safe_get(new_data, "tp"),
+        "request_rate": _safe_get(old_data, "request_rate") or _safe_get(new_data, "request_rate"),
+        "device": _safe_get(old_data, "device") or _safe_get(new_data, "device"),
         # 延迟：毫秒转秒后对比
         "latency_s": _format_pair(
             _convert_ms_to_s(_safe_get(old_data, "mean_e2el_ms")),
@@ -251,13 +251,12 @@ def map_compare_pair_response(old_data: Dict, new_data: Dict) -> Dict:
             _safe_get(old_data, "total_token_throughput"),
             _safe_get(new_data, "total_token_throughput")
         ),
-        # 兼容原有字段（复用格式）
         "requests_req_s": _format_pair(_safe_get(old_data, "request_throughput"), _safe_get(new_data, "request_throughput")),
         "tokens_tok_s": _format_pair(_safe_get(old_data, "total_token_throughput"), _safe_get(new_data, "total_token_throughput"))
     }
 
 
-def process_data_details_compare_response(es_response, params: Dict) -> List[Dict]:
+def process_data_details_compare_response(es_response, params) -> List[Dict]:
     """
     处理双时间点对比响应
     :param es_response: ES原始响应
@@ -339,6 +338,6 @@ def map_data_details(es_source: Dict) -> Dict:
     }
 
 
-def process_data_details_response(es_response) -> List[Dict]:
+def process_data_details_response(es_response, params) -> List[Dict]:
     """模型详情接口：批量响应处理（"""
     return _process_compare_response(es_response, mapping_func=map_data_details)
