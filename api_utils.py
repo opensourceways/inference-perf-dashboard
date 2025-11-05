@@ -96,7 +96,7 @@ def build_es_query(
     return query if query["bool"]["must"] else {"match_all": {}}
 
 
-def process_es_commit_response(es_response) -> Dict[str, List[Dict]]:
+def process_commit_response(es_response) -> Dict[str, List[Dict]]:
     """
     处理ES提交列表响应，转换为「模型名→记录列表」格式
     """
@@ -192,25 +192,14 @@ def _convert_datetime_to_timestamp(datetime_str: Optional[str], fmt: str = "%Y-%
         return None
 
 
-def _format_pair_value(value: Optional[float], default: float = 0.0) -> str:
-    """
-    格式化“值→值”字符串
-    :param value: 要格式化的数值（如吞吐量）
-    :param default: 空值时的默认值
-    :return: 如“0.36→0.36”的字符串
-    """
-    safe_val = value if isinstance(value, (int, float)) and value is not None else default
-    return f"{safe_val:.2f}→{safe_val:.2f}"
-
-
-def _process_es_response(
+def _process_compare_response(
     es_response,
     mapping_func: Callable[[Dict], Dict]  # 接收单条ES source，返回接口格式的函数
 ) -> List[Dict]:
     """
-    批量处理ES响应（提取hits+调用映射函数）
+    批量处理ES响应
     :param es_response: ES原始响应
-    :param mapping_func: 单条数据的映射函数（如map_es_to_response）
+    :param mapping_func: 单条数据的映射函数
     :return: 接口响应列表
     """
     es_hits = es_response.get("hits", {}).get("hits", [])
@@ -222,35 +211,112 @@ def _process_es_response(
     ]
 
 
-def map_es_to_response(es_source: Dict) -> Dict:
-    """模型列表接口：ES数据→接口格式映射"""
+def map_compare_pair_response(old_data: Dict, new_data: Dict) -> Dict:
+    """
+    双时间点数据对比：旧数据（commit1）+ 新数据（commit2）→ 接口格式（旧→新）
+    """
+    # 工具函数：生成“旧值→新值”字符串（处理空值/非数字）
+    def _format_pair(old_val, new_val, default: float = 0.0) -> str:
+        safe_old = old_val if isinstance(old_val, (int, float)) and old_val is not None else default
+        safe_new = new_val if isinstance(new_val, (int, float)) and new_val is not None else default
+        return f"{safe_old:.2f}→{safe_new:.2f}"
+
     return {
-        "device": _safe_get(es_source, "device"),
-        "latency_s": f"{_convert_ms_to_s(_safe_get(es_source, 'mean_e2el_ms'), 0.0):.2f}→"
-                     f"{_convert_ms_to_s(_safe_get(es_source, 'median_e2el_ms'), 0.0):.2f}",
-        "mean_itl_ms": _safe_get(es_source, "mean_itl_ms"),
-        "mean_tpot_ms": _safe_get(es_source, "mean_tpot_ms"),
-        "mean_ttft_ms": _safe_get(es_source, "mean_ttft_ms"),
-        "name": _safe_get(es_source, "model_name"),
-        "p99_itl_ms": _safe_get(es_source, "p99_itl_ms"),
-        "p99_tpot_ms": _safe_get(es_source, "p99_tpot_ms"),
-        "p99_ttft_ms": _safe_get(es_source, "p99_ttft_ms"),
-        "request_rate": _safe_get(es_source, "request_rate"),
-        "requests_req_s": _format_pair_value(_safe_get(es_source, "request_throughput")),
-        "serve_output_throughput_tok_s": _safe_get(es_source, "output_token_throughput"),
-        "serve_request_throughput_req_s": _safe_get(es_source, "request_throughput"),
-        "serve_total_throughput_tok_s": _safe_get(es_source, "total_token_throughput"),
-        "tensor_parallel": _safe_get(es_source, "tp"),
-        "tokens_tok_s": _format_pair_value(_safe_get(es_source, "total_token_throughput"))
+        "name": _safe_get(old_data, "model_name") or _safe_get(new_data, "model_name"),  # 取模型名（优先旧数据）
+        "tensor_parallel": _format_pair(_safe_get(old_data, "tp"), _safe_get(new_data, "tp")),
+        "request_rate": _format_pair(_safe_get(old_data, "request_rate"), _safe_get(new_data, "request_rate")),
+        "device": _safe_get(old_data, "device") or _safe_get(new_data, "device"),  # 设备信息（优先旧数据）
+        # 延迟：毫秒转秒后对比
+        "latency_s": _format_pair(
+            _convert_ms_to_s(_safe_get(old_data, "mean_e2el_ms")),
+            _convert_ms_to_s(_safe_get(new_data, "mean_e2el_ms"))
+        ),
+        # 各毫秒级指标直接对比
+        "mean_itl_ms": _format_pair(_safe_get(old_data, "mean_itl_ms"), _safe_get(new_data, "mean_itl_ms")),
+        "mean_tpot_ms": _format_pair(_safe_get(old_data, "mean_tpot_ms"), _safe_get(new_data, "mean_tpot_ms")),
+        "mean_ttft_ms": _format_pair(_safe_get(old_data, "mean_ttft_ms"), _safe_get(new_data, "mean_ttft_ms")),
+        "p99_itl_ms": _format_pair(_safe_get(old_data, "p99_itl_ms"), _safe_get(new_data, "p99_itl_ms")),
+        "p99_tpot_ms": _format_pair(_safe_get(old_data, "p99_tpot_ms"), _safe_get(new_data, "p99_tpot_ms")),
+        "p99_ttft_ms": _format_pair(_safe_get(old_data, "p99_ttft_ms"), _safe_get(new_data, "p99_ttft_ms")),
+        # 吞吐量指标对比
+        "serve_request_throughput_req_s": _format_pair(
+            _safe_get(old_data, "request_throughput"),
+            _safe_get(new_data, "request_throughput")
+        ),
+        "serve_output_throughput_tok_s": _format_pair(
+            _safe_get(old_data, "output_token_throughput"),
+            _safe_get(new_data, "output_token_throughput")
+        ),
+        "serve_total_throughput_tok_s": _format_pair(
+            _safe_get(old_data, "total_token_throughput"),
+            _safe_get(new_data, "total_token_throughput")
+        ),
+        # 兼容原有字段（复用格式）
+        "requests_req_s": _format_pair(_safe_get(old_data, "request_throughput"), _safe_get(new_data, "request_throughput")),
+        "tokens_tok_s": _format_pair(_safe_get(old_data, "total_token_throughput"), _safe_get(new_data, "total_token_throughput"))
     }
 
 
-def process_es_model_response(es_response) -> List[Dict]:
-    """模型列表接口：批量响应处理"""
-    return _process_es_response(es_response, mapping_func=map_es_to_response)
+def process_data_details_compare_response(es_response, params: Dict) -> List[Dict]:
+    """
+    处理双时间点对比响应
+    :param es_response: ES原始响应
+    :param params: 包含startTime（commit1）和endTime（commit2）的参数
+    :return: 对比格式的结果列表
+    """
+    # 步骤1：提取ES响应中的有效数据（带时间戳）
+    valid_data: List[Dict] = []
+    for hit in es_response.get("hits", {}).get("hits", []):
+        source = hit.get("_source", {}).get("source", {})
+        # 提取必要字段（含时间戳）
+        model_name = _safe_get(source, "model_name")
+        merged_at = _safe_get(source, "merged_at")
+        if not model_name or not merged_at:
+            logger.warning(f"跳过缺失关键字段的记录：{source}")
+            continue
+        # 转换时间戳（用于匹配startTime/endTime）
+        time_stamp = _convert_datetime_to_timestamp(merged_at)
+        if not time_stamp:
+            logger.warning(f"跳过时间格式错误的记录（merged_at：{merged_at}）")
+            continue
+        valid_data.append({**source, "time_stamp": time_stamp})  # 追加时间戳字段
+
+    if not valid_data:
+        return []
+
+    # 步骤2：按模型分组（确保同模型的数据在一起）
+    model_groups: Dict[str, List[Dict]] = {}
+    for data in valid_data:
+        model = _safe_get(data, "model_name")
+        if model not in model_groups:
+            model_groups[model] = []
+        model_groups[model].append(data)
+
+    # 步骤3：对每个模型，筛选“最接近startTime”和“最接近endTime”的数据
+    result: List[Dict] = []
+    target_start = params["startTime"]  # commit1时间
+    target_end = params["endTime"]      # commit2时间
+
+    for model, data_list in model_groups.items():
+        # 筛选：最接近startTime的旧数据（commit1）
+        old_data = min(data_list, key=lambda x: abs(x["time_stamp"] - target_start), default=None)
+        # 筛选：最接近endTime的新数据（commit2）
+        new_data = min(data_list, key=lambda x: abs(x["time_stamp"] - target_end), default=None)
+
+        if not old_data or not new_data:
+            logger.warning(f"模型 {model} 缺少双时间点数据（旧数据：{bool(old_data)}，新数据：{bool(new_data)}），跳过")
+            continue
+        if old_data["time_stamp"] > new_data["time_stamp"]:
+            logger.warning(f"模型 {model} 时间顺序异常（旧时间>新时间），已交换")
+            old_data, new_data = new_data, old_data  # 确保旧数据时间早于新数据
+
+        # 步骤4：生成对比格式数据
+        result.append(map_compare_pair_response(old_data, new_data))
+
+    return result
 
 
-def map_es_to_model_detail(es_source: Dict) -> Dict:
+def map_data_details(es_source: Dict) -> Dict:
     """模型详情接口：ES数据→接口格式映射"""
     return {
         "time": _convert_datetime_to_timestamp(_safe_get(es_source, "merged_at")),
@@ -273,6 +339,6 @@ def map_es_to_model_detail(es_source: Dict) -> Dict:
     }
 
 
-def process_es_model_detail_response(es_response) -> List[Dict]:
+def process_data_details_response(es_response) -> List[Dict]:
     """模型详情接口：批量响应处理（"""
-    return _process_es_response(es_response, mapping_func=map_es_to_model_detail)
+    return _process_compare_response(es_response, mapping_func=map_data_details)
