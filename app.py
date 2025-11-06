@@ -16,10 +16,11 @@ from api_utils import (
     process_data_details_compare_response,
     process_data_details_response
 )
-from config import logger_config
-from es_command import es_operation
 
-logger = logger_config.get_logger(__name__)
+from es_command import es_operation
+from logger import get_logger
+
+logger = get_logger(__name__)
 
 # 移除代理环境变量
 for proxy in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
