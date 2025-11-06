@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 from ssl import create_default_context
 from typing import Dict, Optional, Tuple
@@ -8,6 +9,7 @@ from elasticsearch import Elasticsearch, exceptions
 
 from config import logger_config
 from es_command import es_config
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logger = logger_config.get_logger(__name__)
 

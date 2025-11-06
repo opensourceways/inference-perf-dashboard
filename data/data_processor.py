@@ -1,11 +1,13 @@
 import argparse
 import json
 import os
+import sys
 from dataclasses import asdict, fields
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Tuple, Set
 
 import pandas as pd
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import logger_config
 from data.data_models import Metric, PRInfo
