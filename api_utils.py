@@ -1,7 +1,13 @@
+import os
+import sys
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Callable
 
 import pandas as pd
+
+_project_root = os.path.dirname(os.path.abspath(__file__))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 from config import logger_config
 
