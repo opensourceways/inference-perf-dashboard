@@ -5,6 +5,10 @@ from elasticsearch import exceptions
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 
+_project_root = os.path.dirname(os.path.abspath(__file__))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 from api_utils import (
     format_fail,
     check_input_params,
