@@ -1,4 +1,5 @@
 import os
+import sys
 from typing import Dict, List, Callable, Any
 
 from elasticsearch import exceptions
