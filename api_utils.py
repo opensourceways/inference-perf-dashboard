@@ -266,57 +266,69 @@ def process_data_details_compare_response(es_response, params) -> List[Dict]:
     :param params: 包含startTime（commit1）和endTime（commit2）的参数
     :return: 对比格式的结果列表
     """
-    # 步骤1：提取ES响应中的有效数据（带时间戳）
+    # 时间容差（秒），避免匹配到过远的时间点
+    TIME_TOLERANCE = 600  # 600秒
+
+    # 提取ES响应中的有效数据
     valid_data: List[Dict] = []
     for hit in es_response.get("hits", {}).get("hits", []):
         source = hit.get("_source", {}).get("source", {})
-        # 提取必要字段（含时间戳）
         model_name = _safe_get(source, "model_name")
         merged_at = _safe_get(source, "merged_at")
-        if not model_name or not merged_at:
+        request_rate = _safe_get(source, "request_rate")
+
+        if not model_name or not merged_at or request_rate is None:
             logger.warning(f"跳过缺失关键字段的记录：{source}")
             continue
-        # 转换时间戳（用于匹配startTime/endTime）
+
         time_stamp = _convert_datetime_to_timestamp(merged_at)
         if not time_stamp:
             logger.warning(f"跳过时间格式错误的记录（merged_at：{merged_at}）")
             continue
-        valid_data.append({**source, "time_stamp": time_stamp})  # 追加时间戳字段
+
+        valid_data.append({**source, "time_stamp": time_stamp})
 
     if not valid_data:
         return []
 
-    # 步骤2：按模型分组（确保同模型的数据在一起）
-    model_groups: Dict[str, List[Dict]] = {}
+    # 按模型+request_rate分组
+    model_groups: Dict[Tuple[str, float], List[Dict]] = {}
     for data in valid_data:
         model = _safe_get(data, "model_name")
-        if model not in model_groups:
-            model_groups[model] = []
-        model_groups[model].append(data)
+        request_rate = int(_safe_get(data, "request_rate"))
+        key = (model, request_rate)  # 模型名 + request_rate 作为复合键
 
-    # 步骤3：对每个模型，筛选“最接近startTime”和“最接近endTime”的数据
+        if key not in model_groups:
+            model_groups[key] = []
+        model_groups[key].append(data)
+
+    # 对每个分组筛选双时间点数据
     result: List[Dict] = []
-    target_start = params["startTime"]  # commit1时间
-    target_end = params["endTime"]      # commit2时间
+    target_start = params["startTime"]
+    target_end = params["endTime"]
 
-    for model, data_list in model_groups.items():
-        # 筛选：最接近startTime的旧数据（commit1）
-        old_data = min(data_list, key=lambda x: abs(x["time_stamp"] - target_start), default=None)
-        # 筛选：最接近endTime的新数据（commit2）
-        new_data = min(data_list, key=lambda x: abs(x["time_stamp"] - target_end), default=None)
+    for (model, request_rate), data_list in model_groups.items():
+        start_time_data = [d for d in data_list
+                           if abs(d["time_stamp"] - target_start) < TIME_TOLERANCE]
+        end_time_data = [d for d in data_list
+                         if abs(d["time_stamp"] - target_end) < TIME_TOLERANCE]
 
-        if not old_data or not new_data:
-            logger.warning(f"模型 {model} 缺少双时间点数据（旧数据：{bool(old_data)}，新数据：{bool(new_data)}），跳过")
+        if not start_time_data or not end_time_data:
+            logger.warning(f"模型 {model} request_rate {request_rate} 缺少双时间点数据")
             continue
-        if old_data["time_stamp"] > new_data["time_stamp"]:
-            logger.warning(f"模型 {model} 时间顺序异常（旧时间>新时间），已交换")
-            old_data, new_data = new_data, old_data  # 确保旧数据时间早于新数据
 
-        # 步骤4：生成对比格式数据
+        # 取时间最接近的数据
+        old_data = min(start_time_data, key=lambda x: abs(x["time_stamp"] - target_start))
+        new_data = min(end_time_data, key=lambda x: abs(x["time_stamp"] - target_end))
+
+        if old_data["time_stamp"] > new_data["time_stamp"]:
+            logger.warning(f"模型 {model} request_rate {request_rate} 时间顺序异常，已交换")
+            old_data, new_data = new_data, old_data
+
+        # 生成对比格式数据
         result.append(map_compare_pair_response(old_data, new_data))
 
     return result
-
 
 def map_data_details(es_source: Dict) -> Dict:
     """模型详情接口：ES数据→接口格式映射"""
