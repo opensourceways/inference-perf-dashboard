@@ -5,10 +5,10 @@ from typing import Dict, List, Optional, Tuple, Callable
 
 import pandas as pd
 
+from logger import get_logger
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import logger_config
 
-logger = logger_config.get_logger(__name__)
+logger = get_logger(__name__)
 
 ES_MAX_RESULT_SIZE = 10000
 
