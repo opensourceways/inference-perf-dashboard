@@ -5,10 +5,7 @@ from typing import Dict, List, Optional, Tuple, Callable
 
 import pandas as pd
 
-_project_root = os.path.dirname(os.path.abspath(__file__))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import logger_config
 
 logger = logger_config.get_logger(__name__)
