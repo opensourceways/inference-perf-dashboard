@@ -30,6 +30,7 @@ for proxy in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
 app = Flask(__name__)
 CORS(app)
 
+
 # 初始化 ESHandler 实例
 es_handler, es_index_name = es_operation.init_es_handler()
 

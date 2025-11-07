@@ -278,17 +278,20 @@ def process_data_details_compare_response(es_response, params) -> List[Dict]:
         request_rate = _safe_get(source, "request_rate")
 
         if not model_name or not merged_at or request_rate is None:
-            logger.warning(f"跳过缺失关键字段的记录：{source}")
+            logger.warning(f"跳过缺失关键字段的记录：model={model_name}, merged_at={merged_at}, req_rate={request_rate}")
             continue
 
         time_stamp = _convert_datetime_to_timestamp(merged_at)
         if not time_stamp:
-            logger.warning(f"跳过时间格式错误的记录（merged_at：{merged_at}）")
+            logger.warning(f"时间转换失败：merged_at={merged_at}（原始格式）")
             continue
 
+        # 新增：输出有效数据的时间戳，确认转换是否正确
+        logger.info(f"提取有效数据：model={model_name}, req_rate={request_rate}, 时间戳={time_stamp}, merged_at={merged_at}")
         valid_data.append({**source, "time_stamp": time_stamp})
 
     if not valid_data:
+        logger.warning("未提取到任何有效数据")
         return []
 
     # 按模型+request_rate分组
@@ -296,39 +299,67 @@ def process_data_details_compare_response(es_response, params) -> List[Dict]:
     for data in valid_data:
         model = _safe_get(data, "model_name")
         request_rate = int(_safe_get(data, "request_rate"))
-        key = (model, request_rate)  # 模型名 + request_rate 作为复合键
-
+        key = (model, request_rate)
         if key not in model_groups:
             model_groups[key] = []
         model_groups[key].append(data)
 
-    # 对每个分组筛选双时间点数据
+    # 新增：输出分组情况，确认分组是否正确
+    logger.info(f"共分为{len(model_groups)}个（模型+request_rate）分组：{[k for k in model_groups.keys()]}")
+
     result: List[Dict] = []
     target_start = params["startTime"]
     target_end = params["endTime"]
+    # 新增：确认传入的时间戳参数（单位是否正确）
+    logger.info(f"目标对比时间：startTime={target_start}（秒），endTime={target_end}（秒），容差={TIME_TOLERANCE}秒")
 
     for (model, request_rate), data_list in model_groups.items():
-        start_time_data = [d for d in data_list
-                           if abs(d["time_stamp"] - target_start) < TIME_TOLERANCE]
-        end_time_data = [d for d in data_list
-                         if abs(d["time_stamp"] - target_end) < TIME_TOLERANCE]
+        # 计算每个数据与目标时间的差值，筛选容差内的数据
+        start_time_data = [d for d in data_list if abs(d["time_stamp"] - target_start) < TIME_TOLERANCE]
+        end_time_data = [d for d in data_list if abs(d["time_stamp"] - target_end) < TIME_TOLERANCE]
+
+        # 新增：输出该分组的筛选详情
+        logger.info(
+            f"分组（model={model}, req_rate={request_rate}）："
+            f"原始数据{len(data_list)}条，"
+            f"startTime附近（{target_start}±{TIME_TOLERANCE}）有{len(start_time_data)}条，"
+            f"endTime附近（{target_end}±{TIME_TOLERANCE}）有{len(end_time_data)}条"
+        )
+        # 新增：输出该分组所有数据的时间戳，方便对比
+        for d in data_list:
+            logger.debug(
+                f"数据时间戳={d['time_stamp']}，"
+                f"与start差值={abs(d['time_stamp'] - target_start)}，"
+                f"与end差值={abs(d['time_stamp'] - target_end)}"
+            )
 
         if not start_time_data or not end_time_data:
-            logger.warning(f"模型 {model} request_rate {request_rate} 缺少双时间点数据")
+            logger.warning(f"模型 {model} request_rate {request_rate} 缺少双时间点数据（start有{len(start_time_data)}条，end有{len(end_time_data)}条）")
             continue
 
-        # 取时间最接近的数据
+        # 取最接近的时间点数据
         old_data = min(start_time_data, key=lambda x: abs(x["time_stamp"] - target_start))
         new_data = min(end_time_data, key=lambda x: abs(x["time_stamp"] - target_end))
+        logger.info(
+            f"分组（model={model}, req_rate={request_rate}）匹配成功："
+            f"旧数据时间戳={old_data['time_stamp']}，新数据时间戳={new_data['time_stamp']}"
+        )
 
         if old_data["time_stamp"] > new_data["time_stamp"]:
             logger.warning(f"模型 {model} request_rate {request_rate} 时间顺序异常，已交换")
             old_data, new_data = new_data, old_data
 
-        # 生成对比格式数据
         result.append(map_compare_pair_response(old_data, new_data))
 
-    return result
+    result_sorted = sorted(
+        result,
+        key=lambda x: (
+            x["name"],
+            float(x["tensor_parallel"]) if x["tensor_parallel"] is not None else float("inf"),
+            float(x["request_rate"]) if x["request_rate"] is not None else float("inf")
+        )
+    )
+    return result_sorted
 
 def map_data_details(es_source: Dict) -> Dict:
     """模型详情接口：ES数据→接口格式映射"""
