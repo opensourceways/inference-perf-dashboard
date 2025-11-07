@@ -383,6 +383,20 @@ def process_data_details_compare_response(es_response, params) -> List[Dict]:
         compare_result = map_compare_pair_response(old_data, new_data)
         result.append(compare_result)
 
+    # 剔除无效数据：model_name、tensor_parallel、request_rate 都为null
+    filtered_result = []
+    for item in result:
+        # 判断三个核心字段是否都为null
+        is_all_null = (
+            item["name"] == "null" and
+            item["tensor_parallel"] == "null" and
+            item["request_rate"] == "null"
+        )
+        if is_all_null:
+            logger.info("剔除无效数据：model_name、tensor_parallel、request_rate 都为null")
+            continue
+        filtered_result.append(item)
+
     # 按 model_name → tensor_parallel → request_rate 升序排序
     result_sorted = sorted(
         result,
