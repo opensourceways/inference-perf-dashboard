@@ -244,7 +244,7 @@ def map_compare_pair_response(old_data: Optional[Dict], new_data: Optional[Dict]
     return {
         "name": _get_base_field("model_name"),
         "tensor_parallel": _get_single_value("tp"),
-        "request_rate": _get_single_value("request_rate"),
+        "request_rate": int(_get_single_value("request_rate")),
         "device": _get_base_field("device"),
         "latency_s": _format_pair(
             _convert_ms_to_s(_safe_get(old_data, "mean_e2el_ms")) if old_data else None,
