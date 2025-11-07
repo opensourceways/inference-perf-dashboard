@@ -307,23 +307,43 @@ def process_data_details_compare_response(es_response, params) -> List[Dict]:
     """
     # 提取有效数据（含commit_id，校验核心字段）
     valid_data: List[Dict] = []
+    invalid_data = ["", "null", None]
     for hit in es_response.get("hits", {}).get("hits", []):
         source = hit.get("_source", {}).get("source", {})
-        model_name = _safe_get(source, "model_name")
-        merged_at = _safe_get(source, "merged_at")
-        request_rate = _safe_get(source, "request_rate")
-        commit_id = _safe_get(source, "commit_id")
-        tp = _safe_get(source, "tp")  # 新增tp字段校验（因tensor_parallel需要）
 
-        if not all([model_name, merged_at, request_rate, commit_id, tp]):
-            logger.warning(f"跳过缺失字段：model={model_name}, commit={commit_id}, req_rate={request_rate}, tp={tp}")
+        # 提取核心字段并过滤无效值（"null"/空字符串/非数字等）
+        model_name = _safe_get(source, "model_name")
+        if model_name in invalid_data:
+            logger.warning(f"跳过无效model_name：{model_name}")
             continue
 
+        merged_at = _safe_get(source, "merged_at")
+        if merged_at in invalid_data:
+            logger.warning(f"跳过无效merged_at：{merged_at}")
+            continue
+
+        request_rate = _safe_get(source, "request_rate")
+        if request_rate in invalid_data or not isinstance(request_rate, (int, float)):
+            logger.warning(f"跳过无效request_rate：{request_rate}")
+            continue
+
+        commit_id = _safe_get(source, "commit_id")
+        if commit_id in invalid_data:
+            logger.warning(f"跳过无效commit_id：{commit_id}")
+            continue
+
+        tp = _safe_get(source, "tp")
+        if tp in invalid_data or not isinstance(tp, (int, float)):
+            logger.warning(f"跳过无效tp：{tp}")
+            continue
+
+        # 转换时间戳（必须有效）
         time_stamp = _convert_datetime_to_timestamp(merged_at)
         if not time_stamp:
             logger.warning(f"时间转换失败：merged_at={merged_at}")
             continue
 
+        # 仅保留完全有效的数据
         valid_data.append({
             **source,
             "time_stamp": time_stamp,
@@ -333,68 +353,73 @@ def process_data_details_compare_response(es_response, params) -> List[Dict]:
         })
 
     if not valid_data:
-        logger.warning("无有效数据")
+        logger.warning("无有效数据（所有记录均因字段无效被过滤）")
         return []
 
-    # 确定目标commit_id（绑定时间对应的唯一commit）
+    # 确定目标commit_id
     target_start = params["startTime"]
     target_end = params["endTime"]
 
-    # 找到startTime对应的目标commit（最接近的时间戳）
     start_commit = min(valid_data, key=lambda x: abs(x["time_stamp"] - target_start))["commit_id"]
-    # 找到endTime对应的目标commit（若时间相同，复用start_commit）
-    if target_start == target_end:
-        end_commit = start_commit
-        logger.info(f"startTime == endTime，对比同一commit：{start_commit}")
-    else:
-        end_commit = min(valid_data, key=lambda x: abs(x["time_stamp"] - target_end))["commit_id"]
-
+    end_commit = start_commit if target_start == target_end else \
+    min(valid_data, key=lambda x: abs(x["time_stamp"] - target_end))["commit_id"]
     logger.info(f"目标对比commit：start={start_commit}，end={end_commit}")
 
-    # 按（model, request_rate_int, commit_id）分组（确保数据唯一性）
+    # 按（model, request_rate_int, commit_id）分组
     data_groups: Dict[Tuple[str, int, str], List[Dict]] = {}
     for data in valid_data:
-        key = (
-            data["model_name"],
-            data["request_rate_int"],
-            data["commit_id"]
-        )
+        key = (data["model_name"], data["request_rate_int"], data["commit_id"])
         if key not in data_groups:
             data_groups[key] = []
         data_groups[key].append(data)
 
-    # 提取所有（model, request_rate）组合（去重）
+    # 提取有效（model, request_rate）组合（基于有效数据）
     all_combinations = set()
     for (model, req_rate, commit) in data_groups.keys():
-        all_combinations.add((model, req_rate))
+        # 再次过滤模型名为无效值的组合
+        if model not in invalid_data:
+            all_combinations.add((model, req_rate))
 
-    # 处理每个组合，缺失数据用null代替
+    if not all_combinations:
+        logger.warning("无有效（model, request_rate）组合")
+        return []
+
+    # 步骤5：生成对比结果
     result: List[Dict] = []
     for (model, req_rate) in all_combinations:
-        # 提取start_commit的数据（可能为None）
         start_key = (model, req_rate, start_commit)
         old_data = data_groups[start_key][0] if start_key in data_groups else None
 
-        # 提取end_commit的数据（可能为None）
         end_key = (model, req_rate, end_commit)
         new_data = data_groups[end_key][0] if end_key in data_groups else None
 
-        # 生成对比结果
         compare_result = map_compare_pair_response(old_data, new_data)
         result.append(compare_result)
 
-    # 按 model_name → tensor_parallel → request_rate 升序排序
+    # 过滤全无效数据（name/tp/request_rate均为无效值）
+    filtered_result = []
+    for item in result:
+        # 判定无效值："null"/空字符串
+        is_name_invalid = item["name"] in ("null", "")
+        is_tp_invalid = item["tensor_parallel"] in ("null", "")
+        is_req_rate_invalid = item["request_rate"] in ("null", "")
+
+        if is_name_invalid and is_tp_invalid and is_req_rate_invalid:
+            logger.info(f"剔除全无效数据：{item}")
+            continue
+        filtered_result.append(item)
+
     result_sorted = sorted(
-        result,
+        filtered_result,
         key=lambda x: (
-            x["name"],  # 模型名升序
-            float(x["tensor_parallel"]) if x["tensor_parallel"] != "null" else float("inf"),  # tp升序（null排最后）
-            float(x["request_rate"]) if x["request_rate"] != "null" else float("inf")  # 请求速率升序（null排最后）
+            x["name"] if x["name"] not in ("null", "") else float("inf"),
+            float(x["tensor_parallel"]) if x["tensor_parallel"] not in ("null", "") else float("inf"),
+            float(x["request_rate"]) if x["request_rate"] not in ("null", "") else float("inf")
         )
     )
 
+    logger.info(f"处理完成：原始{len(result)}条，过滤后{len(filtered_result)}条有效数据")
     return result_sorted
-
 
 def map_data_details(es_source: Dict) -> Dict:
     """模型详情接口：ES数据→接口格式映射"""
