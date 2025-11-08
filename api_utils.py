@@ -1,6 +1,6 @@
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Callable
 
 import pandas as pd
@@ -183,7 +183,6 @@ def _convert_datetime_to_timestamp(datetime_str: Optional[str], fmt: str = "%Y-%
     """
     ES日期字符串转秒级时间戳
     :param datetime_str: ES中的日期字符串（如2025-10-22T15:20:00）
-    :param fmt: 日期格式
     :return: 时间戳或None
     """
     if not datetime_str:
@@ -244,7 +243,7 @@ def map_compare_pair_response(old_data: Optional[Dict], new_data: Optional[Dict]
     return {
         "name": _get_base_field("model_name"),
         "tensor_parallel": _get_single_value("tp"),
-        "request_rate": _get_single_value("request_rate"),
+        "request_rate": int(_get_single_value("request_rate")) if _get_single_value("request_rate") != "null" else None,
         "device": _get_base_field("device"),
         "latency_s": _format_pair(
             _convert_ms_to_s(_safe_get(old_data, "mean_e2el_ms")) if old_data else None,
@@ -384,7 +383,7 @@ def process_data_details_compare_response(es_response, params) -> List[Dict]:
         logger.warning("无有效（model, request_rate）组合")
         return []
 
-    # 步骤5：生成对比结果
+    # 生成对比结果
     result: List[Dict] = []
     for (model, req_rate) in all_combinations:
         start_key = (model, req_rate, start_commit)
@@ -400,9 +399,9 @@ def process_data_details_compare_response(es_response, params) -> List[Dict]:
     filtered_result = []
     for item in result:
         # 判定无效值："null"/空字符串
-        is_name_invalid = item["name"] in ("null", "")
-        is_tp_invalid = item["tensor_parallel"] in ("null", "")
-        is_req_rate_invalid = item["request_rate"] in ("null", "")
+        is_name_invalid = item["name"] in invalid_data
+        is_tp_invalid = item["tensor_parallel"] in invalid_data
+        is_req_rate_invalid = item["request_rate"] in invalid_data
 
         if is_name_invalid and is_tp_invalid and is_req_rate_invalid:
             logger.info(f"剔除全无效数据：{item}")
@@ -412,14 +411,15 @@ def process_data_details_compare_response(es_response, params) -> List[Dict]:
     result_sorted = sorted(
         filtered_result,
         key=lambda x: (
-            x["name"] if x["name"] not in ("null", "") else float("inf"),
-            float(x["tensor_parallel"]) if x["tensor_parallel"] not in ("null", "") else float("inf"),
-            float(x["request_rate"]) if x["request_rate"] not in ("null", "") else float("inf")
+            x["name"] if x["name"] not in invalid_data else float("inf"),
+            float(x["tensor_parallel"]) if x["tensor_parallel"] not in invalid_data else float("inf"),
+            float(x["request_rate"]) if x["request_rate"] not in invalid_data else float("inf")
         )
     )
 
     logger.info(f"处理完成：原始{len(result)}条，过滤后{len(filtered_result)}条有效数据")
     return result_sorted
+
 
 def map_data_details(es_source: Dict) -> Dict:
     """模型详情接口：ES数据→接口格式映射"""
