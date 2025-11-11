@@ -23,8 +23,6 @@ RUN apt-get update && \
     apt-get clean  && \
     rm -rf /var/lib/apt/lists/*
 
-RUN touch /app/cron.log && chown appuser:appgroup /app/cron.log
-
 RUN python3.11 -m pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple && \
     python3.11 -m pip install --upgrade pip --no-cache-dir && \
     python3.11 -m pip install apscheduler && \
@@ -33,6 +31,8 @@ RUN python3.11 -m pip config set global.index-url https://mirrors.tuna.tsinghua.
 RUN groupadd -g 1000 appgroup
 RUN useradd -m -u 1000 -g appgroup appuser
 RUN chown -R appuser:appgroup /app
+
+RUN touch /app/cron.log && chown appuser:appgroup /app/cron.log
 
 EXPOSE 5000
 ENV TZ=Asia/Shanghai
