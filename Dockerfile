@@ -39,4 +39,6 @@ ENV TZ=Asia/Shanghai
 
 USER appuser
 
-CMD ["sh", "-c", "python3.11 /app/scheduler.py & gunicorn --bind 0.0.0.0:5000 app:app & wait"]
+#CMD ["sh", "-c", "python3.11 /app/scheduler.py & gunicorn --bind 0.0.0.0:5000 app:app & wait"]
+
+CMD ["sh", "-c", "python3.11 /app/scheduler.py > /app/cron.log 2>&1 & gunicorn --bind 0.0.0.0:5000 app:app & wait -n; exit $?"]
