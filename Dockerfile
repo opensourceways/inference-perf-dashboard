@@ -24,6 +24,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 RUN python3.11 -m pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple && \
+    python3.11 -m pip install apscheduler && \
     python3.11 -m pip install --upgrade pip && \
     python3.11 -m pip install -r requirements.txt
 
