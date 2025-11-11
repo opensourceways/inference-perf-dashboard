@@ -377,10 +377,10 @@ def process_data_details_compare_response(es_response, params) -> List[Dict]:
     min(valid_data, key=lambda x: abs(x["time_stamp"] - target_end))["commit_id"]
     logger.info(f"目标对比commit：start={start_commit}，end={end_commit}")
 
-    # 按（model, request_rate_int, commit_id）分组
+    # 按（model, request_rate, commit_id）分组
     data_groups: Dict[Tuple[str, int, str], List[Dict]] = {}
     for data in valid_data:
-        key = (data["model_name"], data["request_rate_int"], data["commit_id"])
+        key = (data["model_name"], data["request_rate"], data["commit_id"])
         if key not in data_groups:
             data_groups[key] = []
         data_groups[key].append(data)
