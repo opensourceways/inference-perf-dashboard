@@ -4,6 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive TZ=Asia/Shanghai
 ENV PIP_PROGRESS_BAR=off
 ENV PIP_NO_CACHE_DIR=1
 ENV PYTHONUNBUFFERED=1
+ENV ENABLE_SCHEDULER=true
 
 # 修复线程环境变量
 ENV OPENBLAS_NUM_THREADS=1
@@ -45,4 +46,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5000/ || exit 1
 
 # 使用exec确保gunicorn成为PID 1进程
-CMD ["sh", "-c", "python3.11 /app/scheduler.py & exec gunicorn --bind 0.0.0.0:5000 --access-logfile - --error-logfile - app:app"]
+#CMD ["sh", "-c", "python3.11 /app/scheduler.py & exec gunicorn --bind 0.0.0.0:5000 --access-logfile - --error-logfile - app:app"]
+CMD ["sh", "-c", "if [ \"$ENABLE_SCHEDULER\" = \"true\" ]; then python3.11 /app/scheduler.py & fi; exec gunicorn --bind 0.0.0.0:5000 --access-logfile - --error-logfile - app:app"]
