@@ -322,9 +322,22 @@ def process_data_details_compare_response(es_response, params) -> List[Dict]:
             continue
 
         request_rate = _safe_get(source, "request_rate")
-        if request_rate in invalid_data or not isinstance(request_rate, (int, float)):
+        if request_rate in invalid_data:
             logger.warning(f"跳过无效request_rate：{request_rate}")
             continue
+
+        try:
+            request_rate_float = float(request_rate)
+        except (ValueError, TypeError):
+            logger.warning(f"跳过无法转换为数字的request_rate：{request_rate}")
+            continue
+
+        if not request_rate_float.is_integer():
+            logger.warning(f"request_rate不是整数：{request_rate}（值为{request_rate_float}）")
+            continue
+
+        # 转换为整数
+        request_rate = int(request_rate_float)
 
         commit_id = _safe_get(source, "commit_id")
         if commit_id in invalid_data:
@@ -347,7 +360,7 @@ def process_data_details_compare_response(es_response, params) -> List[Dict]:
             **source,
             "time_stamp": time_stamp,
             "commit_id": commit_id,
-            "request_rate_int": int(request_rate),
+            "request_rate": request_rate,
             "tp_int": int(tp)
         })
 
