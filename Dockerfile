@@ -45,6 +45,4 @@ USER appuser
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5000/ || exit 1
 
-# 使用exec确保gunicorn成为PID 1进程
-#CMD ["sh", "-c", "python3.11 /app/scheduler.py & exec gunicorn --bind 0.0.0.0:5000 --access-logfile - --error-logfile - app:app"]
 CMD ["sh", "-c", "if [ \"$ENABLE_SCHEDULER\" = \"true\" ]; then python3.11 /app/scheduler.py & fi; exec gunicorn --bind 0.0.0.0:5000 --access-logfile - --error-logfile - app:app"]
