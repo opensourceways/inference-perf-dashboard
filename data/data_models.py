@@ -8,7 +8,7 @@ class Metric:
     status: str
     tp: int
     engine_version: str
-    request_rate: float
+    request_rate: int
     mean_e2el_ms: float  # 平均端到端延迟（ms）
     mean_ttft_ms: float  # 平均首token生成时间（ms）
     mean_tpot_ms: float  # 平均每个输出token时间（ms）
