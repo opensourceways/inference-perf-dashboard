@@ -146,6 +146,7 @@ class TestESHandler(unittest.TestCase):
             }
         )
 
+    @patch('es_command.es_operation.logger')
     def test_search_request_error(self):
         """测试查询时发生RequestError异常"""
         from elasticsearch.exceptions import RequestError
