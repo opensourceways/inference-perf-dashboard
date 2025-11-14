@@ -148,6 +148,59 @@ class TestESHandler:
         data = es_handler.get_data("test_index", "doc123")
         assert data is None
 
+    def test_search_success(self, es_handler, mock_es):
+        """测试搜索成功并返回结果"""
+        # 模拟索引存在
+        mock_es.indices.exists.return_value = True
+        # 模拟搜索结果
+        mock_hits = [
+            {"_source": {"ID": "doc1", "content": "test1"}},
+            {"_source": {"ID": "doc2", "content": "test2"}}
+        ]
+        mock_es.search.return_value = {"hits": {"hits": mock_hits}}
+        
+        # 执行搜索
+        query = {"match": {"content": "test"}}
+        result = es_handler.search("test_index", query)
+        
+        # 验证结果
+        assert result is not None
+        assert len(result) == 2
+        assert result[0]["ID"] == "doc1"
+        assert result[1]["ID"] == "doc2"
+        mock_es.search.assert_called_once_with(index="test_index", body={"query": query})
+
+
+    def test_search_index_not_exists(self, es_handler, mock_es):
+        """测试搜索不存在的索引"""
+        mock_es.indices.exists.return_value = False
+        
+        query = {"match_all": {}}
+        result = es_handler.search("non_existent_index", query)
+        
+        assert result == []
+        mock_es.search.assert_not_called()
+
+
+    def test_search_no_results(self, es_handler, mock_es):
+        """测试搜索存在但无匹配结果"""
+        mock_es.indices.exists.return_value = True
+        mock_es.search.return_value = {"hits": {"hits": []}}  # 空结果
+        
+        query = {"match": {"content": "nonexistent"}}
+        result = es_handler.search("test_index", query)
+        
+        assert result == []
+
+
+    def test_search_with_exception(self, es_handler, mock_es):
+        """测试搜索时发生异常"""
+        mock_es.indices.exists.return_value = True
+        mock_es.search.side_effect = exceptions.ConnectionError("搜索失败")
+        
+        query = {"match_all": {}}
+        with pytest.raises(ConnectionError):
+            es_handler.search("test_index", query)
 
 class TestInitESHandler:
     @patch('es_command.es_operation.os.path.exists')
