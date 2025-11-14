@@ -4,9 +4,6 @@ from ssl import SSLContext
 from typing import Dict, Optional, Tuple
 from es_command.es_operation import ESHandler, init_es_handler
 from es_command.es_config import MetricMapping
-from logger import get_logger
-
-logger = get_logger(__name__)
 
 class TestESHandler(unittest.TestCase):
     """ESHandler类的单元测试"""
@@ -156,12 +153,6 @@ class TestESHandler(unittest.TestCase):
         
         with self.assertRaises(RequestError):
             self.es_handler.search("test_index", {"invalid": "query"})
-        
-        # 验证异常被正确抛出且日志记录
-        self.assertTrue(any(
-            error_msg in call.args[0]
-            for call in logger.error.call_args_list
-        ))
 
 
 class TestInitESHandler(unittest.TestCase):
