@@ -1,17 +1,19 @@
 import argparse
 import json
 import os
+import sys
 from dataclasses import asdict, fields
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Tuple, Set
 
 import pandas as pd
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import logger_config
 from data.data_models import Metric, PRInfo
 from es_command import es_operation
+from logger import get_logger
 
-logger = logger_config.get_logger(__name__)
+logger = get_logger(__name__)
 
 ROOT_DIR = os.path.expanduser("/data/ascend-ci-share-pkking-sglang/aisbench")
 METRIC_CSV_DIR = "gsm8kdataset.csv"

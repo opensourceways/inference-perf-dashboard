@@ -1,17 +1,14 @@
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Callable
 
 import pandas as pd
 
-_project_root = os.path.dirname(os.path.abspath(__file__))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
+from logger import get_logger
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import logger_config
-
-logger = logger_config.get_logger(__name__)
+logger = get_logger(__name__)
 
 ES_MAX_RESULT_SIZE = 10000
 
@@ -186,7 +183,6 @@ def _convert_datetime_to_timestamp(datetime_str: Optional[str], fmt: str = "%Y-%
     """
     ES日期字符串转秒级时间戳
     :param datetime_str: ES中的日期字符串（如2025-10-22T15:20:00）
-    :param fmt: 日期格式
     :return: 时间戳或None
     """
     if not datetime_str:
@@ -217,48 +213,87 @@ def _process_compare_response(
     ]
 
 
-def map_compare_pair_response(old_data: Dict, new_data: Dict) -> Dict:
+def map_compare_pair_response(old_data: Optional[Dict], new_data: Optional[Dict]) -> Dict:
     """
     双时间点数据对比：旧数据（commit1）+ 新数据（commit2）→ 接口格式（旧→新）
     """
-    # 工具函数：生成“旧值→新值”字符串（处理空值/非数字）
-    def _format_pair(old_val, new_val, default: float = 0.0) -> str:
-        safe_old = old_val if isinstance(old_val, (int, float)) and old_val is not None else default
-        safe_new = new_val if isinstance(new_val, (int, float)) and new_val is not None else default
-        return f"{safe_old:.2f}→{safe_new:.2f}"
+    def _format_pair(old_val, new_val) -> str:
+        def _safe_format(val):
+            if val is None or not isinstance(val, (int, float)):
+                return "null"
+            return f"{val:.2f}"
+
+        return f"{_safe_format(old_val)}→{_safe_format(new_val)}"
+
+    def _get_single_value(key: str) -> str:
+        old_val = _safe_get(old_data, key) if old_data else None
+        new_val = _safe_get(new_data, key) if new_data else None
+        # 优先取旧值，旧值为空则取新值，都为空则返回null
+        val = old_val if (old_val is not None and isinstance(old_val, (int, float))) else new_val
+        if val is None or not isinstance(val, (int, float)):
+            return "null"
+        return f"{val:.0f}" if isinstance(val, int) else f"{val:.2f}"
+
+    # 基础字段：模型名和设备（取非空值）
+    def _get_base_field(key: str) -> str:
+        old_val = _safe_get(old_data, key) if old_data else None
+        new_val = _safe_get(new_data, key) if new_data else None
+        return str(old_val) if old_val is not None else (str(new_val) if new_val is not None else "null")
 
     return {
-        "name": _safe_get(old_data, "model_name") or _safe_get(new_data, "model_name"),
-        "tensor_parallel": _safe_get(old_data, "tp") or _safe_get(new_data, "tp"),
-        "request_rate": _safe_get(old_data, "request_rate") or _safe_get(new_data, "request_rate"),
-        "device": _safe_get(old_data, "device") or _safe_get(new_data, "device"),
-        # 延迟：毫秒转秒后对比
+        "name": _get_base_field("model_name"),
+        "tensor_parallel": _get_single_value("tp"),
+        "request_rate": int(_get_single_value("request_rate")) if _get_single_value("request_rate") != "null" else None,
+        "device": _get_base_field("device"),
         "latency_s": _format_pair(
-            _convert_ms_to_s(_safe_get(old_data, "mean_e2el_ms")),
-            _convert_ms_to_s(_safe_get(new_data, "mean_e2el_ms"))
+            _convert_ms_to_s(_safe_get(old_data, "mean_e2el_ms")) if old_data else None,
+            _convert_ms_to_s(_safe_get(new_data, "mean_e2el_ms")) if new_data else None
         ),
-        # 各毫秒级指标直接对比
-        "mean_itl_ms": _format_pair(_safe_get(old_data, "mean_itl_ms"), _safe_get(new_data, "mean_itl_ms")),
-        "mean_tpot_ms": _format_pair(_safe_get(old_data, "mean_tpot_ms"), _safe_get(new_data, "mean_tpot_ms")),
-        "mean_ttft_ms": _format_pair(_safe_get(old_data, "mean_ttft_ms"), _safe_get(new_data, "mean_ttft_ms")),
-        "p99_itl_ms": _format_pair(_safe_get(old_data, "p99_itl_ms"), _safe_get(new_data, "p99_itl_ms")),
-        "p99_tpot_ms": _format_pair(_safe_get(old_data, "p99_tpot_ms"), _safe_get(new_data, "p99_tpot_ms")),
-        "p99_ttft_ms": _format_pair(_safe_get(old_data, "p99_ttft_ms"), _safe_get(new_data, "p99_ttft_ms")),
+        "mean_itl_ms": _format_pair(
+            _safe_get(old_data, "mean_itl_ms") if old_data else None,
+            _safe_get(new_data, "mean_itl_ms") if new_data else None
+        ),
+        "mean_tpot_ms": _format_pair(
+            _safe_get(old_data, "mean_tpot_ms") if old_data else None,
+            _safe_get(new_data, "mean_tpot_ms") if new_data else None
+        ),
+        "mean_ttft_ms": _format_pair(
+            _safe_get(old_data, "mean_ttft_ms") if old_data else None,
+            _safe_get(new_data, "mean_ttft_ms") if new_data else None
+        ),
+        "p99_itl_ms": _format_pair(
+            _safe_get(old_data, "p99_itl_ms") if old_data else None,
+            _safe_get(new_data, "p99_itl_ms") if new_data else None
+        ),
+        "p99_tpot_ms": _format_pair(
+            _safe_get(old_data, "p99_tpot_ms") if old_data else None,
+            _safe_get(new_data, "p99_tpot_ms") if new_data else None
+        ),
+        "p99_ttft_ms": _format_pair(
+            _safe_get(old_data, "p99_ttft_ms") if old_data else None,
+            _safe_get(new_data, "p99_ttft_ms") if new_data else None
+        ),
         # 吞吐量指标对比
         "serve_request_throughput_req_s": _format_pair(
-            _safe_get(old_data, "request_throughput"),
-            _safe_get(new_data, "request_throughput")
+            _safe_get(old_data, "request_throughput") if old_data else None,
+            _safe_get(new_data, "request_throughput") if new_data else None
         ),
         "serve_output_throughput_tok_s": _format_pair(
-            _safe_get(old_data, "output_token_throughput"),
-            _safe_get(new_data, "output_token_throughput")
+            _safe_get(old_data, "output_token_throughput") if old_data else None,
+            _safe_get(new_data, "output_token_throughput") if new_data else None
         ),
         "serve_total_throughput_tok_s": _format_pair(
-            _safe_get(old_data, "total_token_throughput"),
-            _safe_get(new_data, "total_token_throughput")
+            _safe_get(old_data, "total_token_throughput") if old_data else None,
+            _safe_get(new_data, "total_token_throughput") if new_data else None
         ),
-        "requests_req_s": _format_pair(_safe_get(old_data, "request_throughput"), _safe_get(new_data, "request_throughput")),
-        "tokens_tok_s": _format_pair(_safe_get(old_data, "total_token_throughput"), _safe_get(new_data, "total_token_throughput"))
+        "requests_req_s": _format_pair(
+            _safe_get(old_data, "request_throughput") if old_data else None,
+            _safe_get(new_data, "request_throughput") if new_data else None
+        ),
+        "tokens_tok_s": _format_pair(
+            _safe_get(old_data, "total_token_throughput") if old_data else None,
+            _safe_get(new_data, "total_token_throughput") if new_data else None
+        )
     }
 
 
@@ -269,56 +304,134 @@ def process_data_details_compare_response(es_response, params) -> List[Dict]:
     :param params: 包含startTime（commit1）和endTime（commit2）的参数
     :return: 对比格式的结果列表
     """
-    # 步骤1：提取ES响应中的有效数据（带时间戳）
+    # 提取有效数据（含commit_id，校验核心字段）
     valid_data: List[Dict] = []
+    invalid_data = ["", "null", None]
     for hit in es_response.get("hits", {}).get("hits", []):
         source = hit.get("_source", {}).get("source", {})
-        # 提取必要字段（含时间戳）
+
+        # 提取核心字段并过滤无效值（"null"/空字符串/非数字等）
         model_name = _safe_get(source, "model_name")
-        merged_at = _safe_get(source, "merged_at")
-        if not model_name or not merged_at:
-            logger.warning(f"跳过缺失关键字段的记录：{source}")
+        if model_name in invalid_data:
+            logger.warning(f"跳过无效model_name：{model_name}")
             continue
-        # 转换时间戳（用于匹配startTime/endTime）
+
+        merged_at = _safe_get(source, "merged_at")
+        if merged_at in invalid_data:
+            logger.warning(f"跳过无效merged_at：{merged_at}")
+            continue
+
+        request_rate = _safe_get(source, "request_rate")
+        if request_rate in invalid_data:
+            logger.warning(f"跳过无效request_rate：{request_rate}")
+            continue
+
+        try:
+            request_rate_float = float(request_rate)
+        except (ValueError, TypeError):
+            logger.warning(f"跳过无法转换为数字的request_rate：{request_rate}")
+            continue
+
+        if not request_rate_float.is_integer():
+            logger.warning(f"request_rate不是整数：{request_rate}（值为{request_rate_float}）")
+            continue
+
+        # 转换为整数
+        request_rate = int(request_rate_float)
+
+        commit_id = _safe_get(source, "commit_id")
+        if commit_id in invalid_data:
+            logger.warning(f"跳过无效commit_id：{commit_id}")
+            continue
+
+        tp = _safe_get(source, "tp")
+        if tp in invalid_data or not isinstance(tp, (int, float)):
+            logger.warning(f"跳过无效tp：{tp}")
+            continue
+
+        # 转换时间戳（必须有效）
         time_stamp = _convert_datetime_to_timestamp(merged_at)
         if not time_stamp:
-            logger.warning(f"跳过时间格式错误的记录（merged_at：{merged_at}）")
+            logger.warning(f"时间转换失败：merged_at={merged_at}")
             continue
-        valid_data.append({**source, "time_stamp": time_stamp})  # 追加时间戳字段
+
+        # 仅保留完全有效的数据
+        valid_data.append({
+            **source,
+            "time_stamp": time_stamp,
+            "commit_id": commit_id,
+            "request_rate": request_rate,
+            "tp_int": int(tp)
+        })
 
     if not valid_data:
+        logger.warning("无有效数据（所有记录均因字段无效被过滤）")
         return []
 
-    # 步骤2：按模型分组（确保同模型的数据在一起）
-    model_groups: Dict[str, List[Dict]] = {}
+    # 确定目标commit_id
+    target_start = params["startTime"]
+    target_end = params["endTime"]
+
+    start_commit = min(valid_data, key=lambda x: abs(x["time_stamp"] - target_start))["commit_id"]
+    end_commit = start_commit if target_start == target_end else \
+    min(valid_data, key=lambda x: abs(x["time_stamp"] - target_end))["commit_id"]
+    logger.info(f"目标对比commit：start={start_commit}，end={end_commit}")
+
+    # 按（model, request_rate, commit_id）分组
+    data_groups: Dict[Tuple[str, int, str], List[Dict]] = {}
     for data in valid_data:
-        model = _safe_get(data, "model_name")
-        if model not in model_groups:
-            model_groups[model] = []
-        model_groups[model].append(data)
+        key = (data["model_name"], data["request_rate"], data["commit_id"])
+        if key not in data_groups:
+            data_groups[key] = []
+        data_groups[key].append(data)
 
-    # 步骤3：对每个模型，筛选“最接近startTime”和“最接近endTime”的数据
+    # 提取有效（model, request_rate）组合（基于有效数据）
+    all_combinations = set()
+    for (model, req_rate, commit) in data_groups.keys():
+        # 再次过滤模型名为无效值的组合
+        if model not in invalid_data:
+            all_combinations.add((model, req_rate))
+
+    if not all_combinations:
+        logger.warning("无有效（model, request_rate）组合")
+        return []
+
+    # 生成对比结果
     result: List[Dict] = []
-    target_start = params["startTime"]  # commit1时间
-    target_end = params["endTime"]      # commit2时间
+    for (model, req_rate) in all_combinations:
+        start_key = (model, req_rate, start_commit)
+        old_data = data_groups[start_key][0] if start_key in data_groups else None
 
-    for model, data_list in model_groups.items():
-        # 筛选：最接近startTime的旧数据（commit1）
-        old_data = min(data_list, key=lambda x: abs(x["time_stamp"] - target_start), default=None)
-        # 筛选：最接近endTime的新数据（commit2）
-        new_data = min(data_list, key=lambda x: abs(x["time_stamp"] - target_end), default=None)
+        end_key = (model, req_rate, end_commit)
+        new_data = data_groups[end_key][0] if end_key in data_groups else None
 
-        if not old_data or not new_data:
-            logger.warning(f"模型 {model} 缺少双时间点数据（旧数据：{bool(old_data)}，新数据：{bool(new_data)}），跳过")
+        compare_result = map_compare_pair_response(old_data, new_data)
+        result.append(compare_result)
+
+    # 过滤全无效数据（name/tp/request_rate均为无效值）
+    filtered_result = []
+    for item in result:
+        # 判定无效值："null"/空字符串
+        is_name_invalid = item["name"] in invalid_data
+        is_tp_invalid = item["tensor_parallel"] in invalid_data
+        is_req_rate_invalid = item["request_rate"] in invalid_data
+
+        if is_name_invalid and is_tp_invalid and is_req_rate_invalid:
+            logger.info(f"剔除全无效数据：{item}")
             continue
-        if old_data["time_stamp"] > new_data["time_stamp"]:
-            logger.warning(f"模型 {model} 时间顺序异常（旧时间>新时间），已交换")
-            old_data, new_data = new_data, old_data  # 确保旧数据时间早于新数据
+        filtered_result.append(item)
 
-        # 步骤4：生成对比格式数据
-        result.append(map_compare_pair_response(old_data, new_data))
+    result_sorted = sorted(
+        filtered_result,
+        key=lambda x: (
+            x["name"] if x["name"] not in invalid_data else float("inf"),
+            float(x["tensor_parallel"]) if x["tensor_parallel"] not in invalid_data else float("inf"),
+            float(x["request_rate"]) if x["request_rate"] not in invalid_data else float("inf")
+        )
+    )
 
-    return result
+    logger.info(f"处理完成：原始{len(result)}条，过滤后{len(filtered_result)}条有效数据")
+    return result_sorted
 
 
 def map_data_details(es_source: Dict) -> Dict:

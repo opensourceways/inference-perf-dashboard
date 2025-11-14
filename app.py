@@ -6,9 +6,7 @@ from elasticsearch import exceptions
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 
-_project_root = os.path.dirname(os.path.abspath(__file__))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from api_utils import (
     format_fail,
@@ -18,10 +16,11 @@ from api_utils import (
     process_data_details_compare_response,
     process_data_details_response
 )
-from config import logger_config
-from es_command import es_operation
 
-logger = logger_config.get_logger(__name__)
+from es_command import es_operation
+from logger import get_logger
+
+logger = get_logger(__name__)
 
 # 移除代理环境变量
 for proxy in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
@@ -30,6 +29,7 @@ for proxy in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
 # Flask 应用初始化
 app = Flask(__name__)
 CORS(app)
+
 
 # 初始化 ESHandler 实例
 es_handler, es_index_name = es_operation.init_es_handler()

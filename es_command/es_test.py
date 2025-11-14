@@ -1,7 +1,7 @@
-from config import logger_config
+from logger import get_logger
 from es_command import es_operation
 
-logger = logger_config.get_logger(__name__)
+logger = get_logger(__name__)
 
 if __name__ == "__main__":
     # 初始化ESHandler实例
