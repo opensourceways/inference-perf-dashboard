@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from ssl import SSLContext
 from typing import Dict, Optional, Tuple
 from es_command.es_operation import ESHandler, init_es_handler
