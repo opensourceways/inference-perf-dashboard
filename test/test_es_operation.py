@@ -4,6 +4,7 @@ from ssl import SSLContext
 from typing import Dict, Optional, Tuple
 from es_command.es_operation import ESHandler, init_es_handler
 from es_command.es_config import MetricMapping
+import es_command.es_operation
 
 
 class TestESHandler(unittest.TestCase):
@@ -146,7 +147,6 @@ class TestESHandler(unittest.TestCase):
             }
         )
 
-    @patch('es_command.es_operation.logger')
     def test_search_request_error(self):
         """测试查询时发生RequestError异常"""
         from elasticsearch.exceptions import RequestError
