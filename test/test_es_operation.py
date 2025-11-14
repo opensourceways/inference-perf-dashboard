@@ -4,8 +4,9 @@ from ssl import SSLContext
 from typing import Dict, Optional, Tuple
 from es_command.es_operation import ESHandler, init_es_handler
 from es_command.es_config import MetricMapping
-import es_command.es_operation
+from logger import get_logger
 
+logger = get_logger(__name__)
 
 class TestESHandler(unittest.TestCase):
     """ESHandler类的单元测试"""
