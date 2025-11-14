@@ -1,5 +1,6 @@
 # test/test_es_operation.py
 import os
+import yaml
 from unittest.mock import Mock, patch, MagicMock
 import pytest
 from elasticsearch import exceptions
@@ -31,6 +32,24 @@ def es_handler(mock_es):
 
 
 class TestESHandler:
+    # 新增：测试ESHandler初始化参数是否正确传递给Elasticsearch客户端
+    def test_initialization_parameters(self):
+        with patch('es_command.es_operation.Elasticsearch') as mock_es_cls:
+            ssl_context = Mock()
+            # 初始化处理器
+            ESHandler(
+                es_url="https://es1:9200,https://es2:9200",
+                username="admin",
+                token="secret",
+                ssl_context=ssl_context
+            )
+            # 验证客户端初始化参数
+            mock_es_cls.assert_called_once_with(
+                ["https://es1:9200", "https://es2:9200"],
+                basic_auth=("admin", "secret"),
+                ssl_context=ssl_context
+            )
+
     def test_check_connection_success(self, es_handler, mock_es):
         """测试连接成功场景"""
         mock_es.info.return_value = {"status": "ok"}
@@ -41,6 +60,20 @@ class TestESHandler:
         mock_es.info.side_effect = exceptions.ConnectionError("连接失败")
         with pytest.raises(ConnectionError):
             es_handler._check_connection()
+
+    # 新增：测试创建索引时指定映射
+    def test_create_index_with_mappings(self, es_handler, mock_es):
+        """测试带映射的索引创建"""
+        mock_es.indices.exists.return_value = False
+        mock_es.indices.create.return_value = {"acknowledged": True}
+        custom_mappings = {"properties": {"custom_field": {"type": "keyword"}}}
+        
+        result = es_handler.create_index("test_index", mappings=custom_mappings)
+        assert result is True
+        mock_es.indices.create.assert_called_once_with(
+            index="test_index",
+            mappings=custom_mappings
+        )
 
     def test_create_index_new(self, es_handler, mock_es):
         """测试创建新索引"""
@@ -58,6 +91,15 @@ class TestESHandler:
         result = es_handler.create_index("test_index")
         assert result is False
         mock_es.indices.create.assert_not_called()
+
+    # 新增：测试创建索引时的异常处理
+    def test_create_index_exception(self, es_handler, mock_es):
+        """测试创建索引时发生异常"""
+        mock_es.indices.exists.return_value = False
+        mock_es.indices.create.side_effect = exceptions.RequestError("创建失败")
+        
+        with pytest.raises(exceptions.RequestError):
+            es_handler.create_index("test_index")
 
     def test_check_id_exists(self, es_handler, mock_es):
         """测试检查文档ID存在性"""
@@ -78,6 +120,19 @@ class TestESHandler:
         
         assert result is True
         mock_es.index.assert_called_once()
+
+    # 新增：测试添加数据时创建索引失败的场景
+    def test_add_data_create_index_failure(self, es_handler, mock_es):
+        """测试添加数据时自动创建索引失败"""
+        mock_es.indices.exists.side_effect = [False, False]  # 索引始终不存在
+        es_handler.create_index = Mock(return_value=False)  # 创建索引失败
+        mock_es.exists.return_value = False
+        
+        data = {"ID": "doc123", "source": {"pr_id": "123"}}
+        result = es_handler.add_data("test_index", "doc123", data)
+        
+        assert result is False
+        mock_es.index.assert_not_called()
 
     def test_add_data_existing_id(self, es_handler, mock_es):
         """测试添加已存在ID的数据"""
@@ -103,6 +158,17 @@ class TestESHandler:
         assert result is True
         es_handler.create_index.assert_called_once_with("test_index", mappings=MetricMapping.DEFAULT_MAPPINGS)
 
+    # 新增：测试添加数据时的ES异常
+    def test_add_data_exception(self, es_handler, mock_es):
+        """测试添加数据时发生连接异常"""
+        mock_es.indices.exists.return_value = True
+        mock_es.exists.return_value = False
+        mock_es.index.side_effect = exceptions.ConnectionError("添加失败")
+        
+        data = {"ID": "doc123", "source": {}}
+        with pytest.raises(exceptions.ConnectionError):
+            es_handler.add_data("test_index", "doc123", data)
+
     def test_update_data_success(self, es_handler, mock_es):
         """测试成功更新数据"""
         mock_es.exists.return_value = True
@@ -117,6 +183,15 @@ class TestESHandler:
         
         result = es_handler.update_data("test_index", "doc123", {"source.pr_id": "456"})
         assert result is False
+
+    # 新增：测试更新数据时的异常
+    def test_update_data_exception(self, es_handler, mock_es):
+        """测试更新数据时发生ES异常"""
+        mock_es.exists.return_value = True
+        mock_es.update.side_effect = exceptions.ConnectionError("更新失败")
+        
+        with pytest.raises(exceptions.ConnectionError):
+            es_handler.update_data("test_index", "doc123", {"field": "value"})
 
     def test_delete_data_success(self, es_handler, mock_es):
         """测试成功删除数据"""
@@ -133,6 +208,15 @@ class TestESHandler:
         result = es_handler.delete_data("test_index", "doc123")
         assert result is False
 
+    # 新增：测试删除数据时的异常
+    def test_delete_data_exception(self, es_handler, mock_es):
+        """测试删除数据时发生ES异常"""
+        mock_es.exists.return_value = True
+        mock_es.delete.side_effect = exceptions.ConnectionError("删除失败")
+        
+        with pytest.raises(exceptions.ConnectionError):
+            es_handler.delete_data("test_index", "doc123")
+
     def test_get_data_success(self, es_handler, mock_es):
         """测试成功查询数据"""
         mock_es.get.return_value = {"_source": {"ID": "doc123", "source": {}}}
@@ -148,28 +232,47 @@ class TestESHandler:
         data = es_handler.get_data("test_index", "doc123")
         assert data is None
 
+    # 新增：测试查询数据时的连接异常
+    def test_get_data_exception(self, es_handler, mock_es):
+        """测试查询数据时发生连接异常"""
+        mock_es.get.side_effect = exceptions.ConnectionError("查询失败")
+        
+        data = es_handler.get_data("test_index", "doc123")
+        assert data is None
+
     def test_search_success(self, es_handler, mock_es):
         """测试搜索成功并返回结果"""
-        # 模拟索引存在
         mock_es.indices.exists.return_value = True
-        # 模拟搜索结果
         mock_hits = [
             {"_source": {"ID": "doc1", "content": "test1"}},
             {"_source": {"ID": "doc2", "content": "test2"}}
         ]
         mock_es.search.return_value = {"hits": {"hits": mock_hits}}
         
-        # 执行搜索
         query = {"match": {"content": "test"}}
         result = es_handler.search("test_index", query)
         
-        # 验证结果
         assert result is not None
         assert len(result) == 2
         assert result[0]["ID"] == "doc1"
         assert result[1]["ID"] == "doc2"
         mock_es.search.assert_called_once_with(index="test_index", body={"query": query})
 
+    # 新增：测试搜索时指定分页参数
+    def test_search_with_pagination(self, es_handler, mock_es):
+        """测试搜索时传递分页参数"""
+        mock_es.indices.exists.return_value = True
+        mock_es.search.return_value = {"hits": {"hits": []}}
+        
+        query = {"match_all": {}}
+        es_handler.search("test_index", query, size=50, from_=10)
+        
+        mock_es.search.assert_called_once_with(
+            index="test_index",
+            body={"query": query},
+            size=50,
+            from_=10
+        )
 
     def test_search_index_not_exists(self, es_handler, mock_es):
         """测试搜索不存在的索引"""
@@ -181,17 +284,15 @@ class TestESHandler:
         assert result == []
         mock_es.search.assert_not_called()
 
-
     def test_search_no_results(self, es_handler, mock_es):
         """测试搜索存在但无匹配结果"""
         mock_es.indices.exists.return_value = True
-        mock_es.search.return_value = {"hits": {"hits": []}}  # 空结果
+        mock_es.search.return_value = {"hits": {"hits": []}}
         
         query = {"match": {"content": "nonexistent"}}
         result = es_handler.search("test_index", query)
         
         assert result == []
-
 
     def test_search_with_exception(self, es_handler, mock_es):
         """测试搜索时发生异常"""
@@ -201,6 +302,7 @@ class TestESHandler:
         query = {"match_all": {}}
         with pytest.raises(ConnectionError):
             es_handler.search("test_index", query)
+
 
 class TestInitESHandler:
     @patch('es_command.es_operation.os.path.exists')
@@ -226,7 +328,19 @@ class TestInitESHandler:
             assert handler == mock_handler
             assert index_name == "test_index"
 
+    # 新增：测试配置文件解析失败场景
     @patch('es_command.es_operation.os.path.exists')
+    @patch('es_command.es_operation.open')
+    @patch('es_command.es_operation.yaml.safe_load')
+    def test_init_yaml_parse_error(self, mock_yaml, mock_open, mock_exists):
+        """测试配置文件YAML解析失败"""
+        mock_exists.return_value = True
+        mock_yaml.side_effect = yaml.YAMLError("解析错误")  # 模拟YAML格式错误
+        
+        handler, index_name = init_es_handler()
+        assert handler is None
+        assert index_name == "sglang_model_performance"
+
     def test_init_config_not_found(self, mock_exists):
         """测试配置文件不存在的情况"""
         mock_exists.return_value = False
@@ -242,6 +356,19 @@ class TestInitESHandler:
         """测试配置缺少必要字段的情况"""
         mock_exists.return_value = True
         mock_yaml.return_value = {"es": {"url": "https://fake.es:9200"}}  # 缺少token
+        
+        handler, index_name = init_es_handler()
+        assert handler is None
+        assert index_name == "sglang_model_performance"
+
+    # 新增：测试配置文件存在但无es节点
+    @patch('es_command.es_operation.os.path.exists')
+    @patch('es_command.es_operation.open')
+    @patch('es_command.es_operation.yaml.safe_load')
+    def test_init_missing_es_section(self, mock_yaml, mock_open, mock_exists):
+        """测试配置文件缺少es节点"""
+        mock_exists.return_value = True
+        mock_yaml.return_value = {"other": "config"}  # 无es配置
         
         handler, index_name = init_es_handler()
         assert handler is None
